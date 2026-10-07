@@ -84,6 +84,10 @@ Gli errori applicativi degli endpoint hanno forma:
 
 JSON malformato o tipi errati producono 400; Content-Type diverso da JSON
 produce 415; input semanticamente invalido produce 422; utente mancante 404.
+Campi JSON sconosciuti o più valori JSON nello stesso body producono 400;
+body oltre 1 MiB produce 413. Il decoder e le risposte sono forniti dal package
+HTTP di Palma. `NewErrorMapper` viene scoperto e iniettato nel controller:
+la traduzione degli errori di dominio rimane configurata nell'adapter HTTP.
 Gli errori interni producono 500 senza esporre la causa al client.
 Gli errori di routing fuori da questi endpoint restano gestiti da Echo.
 

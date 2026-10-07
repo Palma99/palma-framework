@@ -62,3 +62,7 @@ chiusura. L'esempio `examples/cleanup` mostra questo contratto.
 Il [lifecycle applicativo](docs/lifecycle.md) coordina avvio, supervisione,
 arresto con timeout e cleanup finale. L'esempio HTTP usa `RunSignals()` per
 gestire SIGINT e SIGTERM.
+
+Il [package HTTP](docs/http.md) offre risposte tipizzate, decoder JSON e mapping
+degli errori applicativi indipendenti dal router. L'esempio Echo lo usa attraverso
+un mapper iniettato nel controller.

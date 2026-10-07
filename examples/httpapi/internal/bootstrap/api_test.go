@@ -82,6 +82,8 @@ func TestErrorResponses(t *testing.T) {
 		{"missing user", http.MethodGet, "/users/unknown", "", "", "not_found", 404},
 		{"malformed JSON", http.MethodPost, "/users", `{"name":`, "application/json", "invalid_request", 400},
 		{"wrong field type", http.MethodPost, "/users", `{"name":42}`, "application/json", "invalid_request", 400},
+		{"unknown field", http.MethodPost, "/users", `{"name":"Ada","extra":true}`, "application/json", "invalid_request", 400},
+		{"multiple JSON values", http.MethodPost, "/users", `{"name":"Ada"} {}`, "application/json", "invalid_request", 400},
 		{"empty name", http.MethodPost, "/users", `{"name":"  "}`, "application/json", "validation_failed", 422},
 		{"missing name", http.MethodPost, "/users", `{}`, "application/json", "validation_failed", 422},
 		{"long name", http.MethodPost, "/users", `{"name":"` + strings.Repeat("a", 101) + `"}`, "application/json", "validation_failed", 422},

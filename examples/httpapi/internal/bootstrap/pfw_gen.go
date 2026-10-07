@@ -20,8 +20,9 @@ func Initialize(input0 config.Config) (*http.Server, error) {
 		return zero, fmt.Errorf("pfw: github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/memory.NewMemoryStore: %w", err)
 	}
 	value1 := application.NewService(value0)
-	value2 := userhttp.NewController(value1)
-	value3 := apihttp.Routes(value2)
-	value4 := apihttp.Server(value3, input0)
-	return value4, nil
+	value2 := userhttp.NewErrorMapper()
+	value3 := userhttp.NewController(value1, value2)
+	value4 := apihttp.Routes(value3)
+	value5 := apihttp.Server(value4, input0)
+	return value5, nil
 }

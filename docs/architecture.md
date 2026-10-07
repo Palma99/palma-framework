@@ -61,6 +61,10 @@ Il framework completo è ancora in sviluppo.
 componenti. `transport/httpserver` collega un server della standard library a
 quel contratto. La [guida lifecycle](lifecycle.md) ne descrive API e limiti.
 
+`http` offre risposte, errori pubblici, serializzazione/deserializzazione JSON e
+mapping degli errori applicativi. Questi helper usano `net/http`, sono opzionali
+e non richiedono un context o un router Palma. La [guida HTTP](http.md) ne mostra l'uso.
+
 ## Libertà di organizzazione del codice
 
 La composizione deve identificare i costruttori tramite simboli Go e i binding
