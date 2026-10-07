@@ -1,0 +1,92 @@
+# API di esempio
+
+Backend Echo con una struttura per funzionalità e separazione fra dominio,
+servizi applicativi e adapter. È una scelta di questo esempio: Palma non
+richiede cartelle, nomi o architetture specifiche.
+
+```text
+httpapi/
+├── cmd/api/main.go                 # entry point e lifecycle
+└── internal/
+    ├── bootstrap/                  # composizione dei moduli e wiring generato
+    │   ├── compose.go
+    │   ├── generate.go
+    │   └── pfw_gen.go
+    ├── config/                     # configurazione fornita dall'entry point
+    ├── platform/http/              # router principale e server HTTP
+    └── user/                       # funzionalità utenti
+        ├── domain/                 # tipi, invarianti ed errori
+        ├── application/            # operazioni e port Repository
+        └── adapter/
+            ├── http/               # controller Echo, DTO e mapping degli errori
+            └── memory/             # repository concorrente in memoria
+```
+
+Il dominio non importa Palma, Echo o lo storage. L'application dipende dal
+dominio e dichiara l'interfaccia dello storage. Gli adapter implementano i
+confini applicativi. `bootstrap` collega tutto con registrazioni esplicite e
+wiring automatico; i moduli dichiarativi restano nello stesso package.
+Il modulo `Users` usa `pfw.Discover("../user/...")`: i costruttori di storage,
+servizio e controller sono marcati `//pfw:coconut`. Router e server restano
+registrati manualmente. `Users` abilita `pfw.AutoBind()`: il repository viene
+collegato automaticamente perché
+`*memory.Store` è l'unico tipo registrato che implementa `application.Repository`.
+Un binding esplicito può selezionare un adapter quando ne vengono registrati altri.
+
+Una nuova funzionalità può affiancare `internal/user`, con i propri servizi
+e adapter. `platform/http` raccoglie le route; `bootstrap` raccoglie i provider.
+Non serve creare nuovi livelli o interfacce per ogni struct.
+
+## Esecuzione
+
+Dalla root del repository:
+
+```sh
+go run ./cmd/pfw generate ./examples/httpapi/internal/bootstrap
+go run ./cmd/pfw generate -check ./examples/httpapi/internal/bootstrap
+go test -race ./examples/httpapi/...
+go run ./examples/httpapi/cmd/api
+```
+
+In alternativa alla prima riga: `go generate ./examples/httpapi/internal/bootstrap`.
+L'API ascolta su `:8080`, con un utente iniziale `Ada` (ID `1`). Indirizzo e
+nome sono forniti tramite `config.Config` nell'entry point. Il caricamento da
+environment non è implementato in questo esempio.
+
+## Endpoint
+
+| Richiesta | Esito |
+| --- | --- |
+| `GET /users` | 200, elenco utenti in ordine di creazione. |
+| `POST /users` con JSON `{"name":"Grace"}` | 201, utente creato e header `Location`. |
+| `GET /users/:id` | 200, utente trovato; 404 se non esiste. |
+
+Il nome viene ripulito dagli spazi iniziali/finali e deve contenere da 1 a 100
+caratteri Unicode. La validazione appartiene al dominio e vale anche senza HTTP.
+Il repository assegna ID incrementali e protegge letture/scritture concorrenti.
+I dati vengono persi alla chiusura del processo; nomi duplicati sono consentiti.
+
+```sh
+curl http://localhost:8080/users
+curl -i -X POST http://localhost:8080/users -H 'Content-Type: application/json' -d '{"name":"Grace"}'
+curl http://localhost:8080/users/2
+```
+
+Gli errori applicativi degli endpoint hanno forma:
+
+```json
+{
+  "code": "validation_failed",
+  "message": "invalid input",
+  "fields": {"name": "name is required"}
+}
+```
+
+JSON malformato o tipi errati producono 400; Content-Type diverso da JSON
+produce 415; input semanticamente invalido produce 422; utente mancante 404.
+Gli errori interni producono 500 senza esporre la causa al client.
+Gli errori di routing fuori da questi endpoint restano gestiti da Echo.
+
+I test passano attraverso il composition root generato e verificano il flusso
+creazione/ricerca/elenco, validazione, errori e concorrenza del repository.
+SIGINT/SIGTERM attivano il lifecycle e lo shutdown con timeout di 5 secondi.
