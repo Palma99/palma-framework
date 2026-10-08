@@ -18,10 +18,10 @@ bash scripts/package-release.sh v0.1.0
 
 La verifica controlla formatting, `go mod tidy`, integrità delle dipendenze,
 wiring aggiornato, `go vet`, test con race detector e compilazione. La CI esegue
-gli stessi check su Linux, macOS e Windows. Il workflow è configurato ma deve
+gli stessi check su Linux e macOS. Il workflow è configurato ma deve
 ancora essere eseguito su GitHub.
 
-Gli artefatti locali sono in `dist/v0.1.0`: CLI per macOS, Linux e Windows, sia
+Gli artefatti locali sono in `dist/v0.1.0`: quattro pacchetti CLI per macOS e Linux, sia
 amd64 sia arm64, archivi con LICENSE, licenze delle dipendenze collegate, README
 e CHANGELOG, e `checksums.txt` SHA-256.
 Ogni binario è compilato senza cgo, con path rimossi e versione incorporata.

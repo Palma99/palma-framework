@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.example.tmpl
 /bin/
 /dist/
 .DS_Store

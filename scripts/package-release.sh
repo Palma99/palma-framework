@@ -39,22 +39,17 @@ while IFS='|' read -r module_name module_dir; do
   fi
 done < "$packaging_tmp/modules.txt"
 
-for release_os in darwin linux windows; do
+for release_os in darwin linux; do
   for release_arch in amd64 arm64; do
     binary=pfw
-    if [[ "$release_os" == windows ]]; then binary=pfw.exe; fi
     CGO_ENABLED=0 GOOS="$release_os" GOARCH="$release_arch" go build \
       -trimpath -ldflags="-s -w -X main.version=$release_version" \
       -o "$packaging_tmp/$binary" ./cmd/pfw
     cp LICENSE README.md CHANGELOG.md "$packaging_tmp/"
     archive="pfw_${release_version}_${release_os}_${release_arch}"
-    if [[ "$release_os" == windows ]]; then
-      (cd "$packaging_tmp" && zip -q "$release_dir/$archive.zip" "$binary" LICENSE README.md CHANGELOG.md THIRD_PARTY_LICENSES.txt)
-    else
-      COPYFILE_DISABLE=1 tar -czf "$release_dir/$archive.tar.gz" -C "$packaging_tmp" "$binary" LICENSE README.md CHANGELOG.md THIRD_PARTY_LICENSES.txt
-    fi
+    COPYFILE_DISABLE=1 tar -czf "$release_dir/$archive.tar.gz" -C "$packaging_tmp" "$binary" LICENSE README.md CHANGELOG.md THIRD_PARTY_LICENSES.txt
   done
 done
-(cd "$release_dir" && shasum -a 256 *.tar.gz *.zip > checksums.txt)
+(cd "$release_dir" && shasum -a 256 *.tar.gz > checksums.txt)
 packaging_complete=1
 printf 'Release artifacts: %s\n' "$release_dir"
