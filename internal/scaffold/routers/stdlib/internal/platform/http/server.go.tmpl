@@ -8,6 +8,7 @@ import (
  itemhttp "{{.Module}}/internal/item/infrastructure/http"
 )
 
+//pfw:coconut
 func Routes(items *itemhttp.Handler) *http.ServeMux {
  mux := http.NewServeMux()
  mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -17,6 +18,7 @@ func Routes(items *itemhttp.Handler) *http.ServeMux {
  return mux
 }
 
+//pfw:coconut
 func Server(mux *http.ServeMux, cfg config.Config) *http.Server {
  return &http.Server{Addr: cfg.HTTP.Address, Handler: mux, ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout}
 }

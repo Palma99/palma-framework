@@ -12,6 +12,7 @@ import (
 type Store struct { mu sync.RWMutex; items []domain.Item; next uint64 }
 var _ application.Repository = (*Store)(nil)
 
+//pfw:coconut
 func NewStore() *Store { return &Store{items: []domain.Item{}} }
 
 func (s *Store) List(ctx context.Context) ([]domain.Item, error) {

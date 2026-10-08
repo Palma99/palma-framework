@@ -8,6 +8,7 @@ import (
  itemhttp "{{.Module}}/internal/item/infrastructure/http"
 )
 
+//pfw:coconut
 func Routes(items *itemhttp.Handler) *echo.Echo {
  router := echo.New()
  router.GET("/health", func(ctx *echo.Context) error {
@@ -17,6 +18,7 @@ func Routes(items *itemhttp.Handler) *echo.Echo {
  return router
 }
 
+//pfw:coconut
 func Server(router *echo.Echo, cfg config.Config) *http.Server {
  return &http.Server{Addr: cfg.HTTP.Address, Handler: router, ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout}
 }

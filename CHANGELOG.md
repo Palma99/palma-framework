@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Template con discovery `../...` e provider annotati `//pfw:coconut`, senza
+  liste esplicite di costruttori.
+- Log di readiness dell'API con indirizzo e ambiente, dopo il bind del listener,
+  per router stdlib ed Echo; test di avvio e porta occupata inclusi negli skeleton.
+
 ## v0.1.0 — prima release, in preparazione
 
 Prima versione pubblica di Palma Framework. L'API è iniziale: le versioni `0.x`

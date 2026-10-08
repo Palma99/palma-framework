@@ -36,6 +36,16 @@ The memory implementation is usable immediately. Data is lost on restart. Implem
 
 ## Wiring and environments
 
+The composition uses `pfw.Discover("../...")` to discover providers throughout
+`internal`. Mark each dependency constructor with `//pfw:coconut`, immediately
+above its declaration. The starter providers already have these annotations;
+there is no constructor list to maintain. The repository binding stays explicit.
+Domain factories and other helpers do not need annotations.
+
+The server logs `server started` with the bound address and environment after
+successfully opening its listener. Startup errors do not emit a readiness log.
+The same lifecycle wrapper is used with both stdlib and Echo routers.
+
 ```sh
 go generate ./internal/bootstrap
 go tool pfw generate -env {{.Environment}} -check ./internal/bootstrap

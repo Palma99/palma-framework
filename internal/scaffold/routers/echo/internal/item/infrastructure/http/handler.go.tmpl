@@ -9,6 +9,7 @@ import (
 
 type Handler struct { service *application.Service; errors *pfwhttp.Mapper }
 
+//pfw:coconut
 func NewHandler(service *application.Service) *Handler {
  return &Handler{service: service, errors: newErrorMapper()}
 }

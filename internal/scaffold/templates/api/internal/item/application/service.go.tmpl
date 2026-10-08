@@ -14,6 +14,7 @@ type Repository interface {
 
 type Service struct { repository Repository }
 
+//pfw:coconut
 func NewService(repository Repository) *Service { return &Service{repository: repository} }
 
 func (s *Service) List(ctx context.Context) ([]domain.Item, error) { return s.repository.List(ctx) }

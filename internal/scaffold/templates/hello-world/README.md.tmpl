@@ -20,6 +20,9 @@ The CLI is pinned through the `tool` directive in go.mod. With a local framework
 replacement, the checkout must remain available; remove the replacement and pin
 a published framework version to share the project independently.
 
-`compose.go` declares supported environments and constructors. Add your own
+`compose.go` declares supported environments and uses `pfw.Discover("../...")`
+to discover providers in `internal`. Mark new dependency constructors with
+`//pfw:coconut`, as shown by `application.NewApp`; no constructor list is needed.
+Add your own
 names to `pfw.Environments(...)`. Generate again for each selected environment
 before building; the binary rejects an environment different from its wiring.

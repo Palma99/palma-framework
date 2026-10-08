@@ -3,19 +3,17 @@
 package bootstrap
 
 import (
- "net/http"
  pfw "github.com/palma99/palma-framework"
  "{{.Module}}/internal/config"
- itemhttp "{{.Module}}/internal/item/infrastructure/http"
  "{{.Module}}/internal/item/infrastructure/memory"
  "{{.Module}}/internal/item/application"
  apihttp "{{.Module}}/internal/platform/http"
 )
 
-func Initialize(env pfw.Environment, cfg config.Config) (*http.Server, func() error, error) {
- return pfw.BuildWithCleanup[*http.Server](
+func Initialize(env pfw.Environment, cfg config.Config) (*apihttp.LifecycleServer, func() error, error) {
+ return pfw.BuildWithCleanup[*apihttp.LifecycleServer](
   pfw.Environments("{{.Environment}}"),
-  pfw.Constructors(memory.NewStore, application.NewService, itemhttp.NewHandler, apihttp.Routes, apihttp.Server),
+  pfw.Discover("../..."),
   pfw.Bind[application.Repository, *memory.Store](),
  )
 }

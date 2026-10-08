@@ -132,3 +132,17 @@ Include decoding JSON con limiti e rifiuto dei campi sconosciuti, validazione
 del nome, risposte JSON, errori pubblici senza dettagli interni e test del flusso
 HTTP attraverso il wiring generato. Configurazione e file dotenv usano il
 prefisso `APP_`; il lifecycle gestisce SIGINT/SIGTERM e shutdown con timeout.
+
+Entrambi i template includono `pfw.Discover("../...")` nella composizione:
+la discovery copre tutti i package sotto `internal`. I costruttori dei provider
+sono annotati con `//pfw:coconut`; per aggiungere un nuovo provider basta
+annotare il suo costruttore, senza mantenere una lista `pfw.Constructors`.
+I binding delle interfacce rimangono espliciti, come quello di `Repository`.
+Le factory di dominio e gli helper che non sono provider DI non sono annotati.
+
+L'API genera un componente lifecycle comune ai due router. Dopo il bind della
+porta scrive `server started address=<indirizzo> environment=<nome>`, mostrando
+l'indirizzo effettivamente assegnato anche con porta `0`. Se il bind fallisce,
+l'avvio restituisce l'errore senza stampare un log di readiness. I test generati
+verificano sia la raggiungibilità del server dopo il log sia l'assenza del log
+quando la porta è occupata.
