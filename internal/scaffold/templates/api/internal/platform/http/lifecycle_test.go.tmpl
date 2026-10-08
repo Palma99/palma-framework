@@ -4,7 +4,7 @@ import (
  "bytes"
  "context"
  "io"
- "log"
+ "github.com/palma99/palma-framework/logging"
  "net"
  "net/http"
  "strings"
@@ -15,16 +15,13 @@ import (
 
 func captureLogs(t *testing.T) *bytes.Buffer {
  t.Helper()
- previous := log.Writer()
  var output bytes.Buffer
- log.SetOutput(&output)
- t.Cleanup(func(){ log.SetOutput(previous) })
  return &output
 }
 
 func TestServerLogsReadinessAfterBinding(t *testing.T) {
  output := captureLogs(t)
- server := apihttp.NewLifecycleServer(&http.Server{Addr: "127.0.0.1:0", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){ io.WriteString(w,"ready") })}, "{{.Environment}}")
+ server := apihttp.NewLifecycleServer(&http.Server{Addr: "127.0.0.1:0", Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){ io.WriteString(w,"ready") })}, "{{.Environment}}", logging.New(logging.Options{Output: output}))
  if output.Len() != 0 { t.Fatal("logged readiness during construction") }
  if err := server.Start(context.Background()); err != nil { t.Fatal(err) }
  t.Cleanup(func(){
@@ -33,7 +30,7 @@ func TestServerLogsReadinessAfterBinding(t *testing.T) {
   if err := server.Wait(); err != nil { t.Error(err) }
  })
  address := server.Addr().String()
- if !strings.Contains(output.String(), "server started address="+address+" environment={{.Environment}}") { t.Fatalf("readiness log: %s",output) }
+ if !strings.Contains(output.String(), "msg=\"server started\" address="+address+" environment={{.Environment}}") { t.Fatalf("readiness log: %s",output) }
  client := &http.Client{Timeout: time.Second}
  defer client.CloseIdleConnections()
  response, err := client.Get("http://"+address)
@@ -48,7 +45,7 @@ func TestFailedBindDoesNotLogReadiness(t *testing.T) {
  occupied, err := net.Listen("tcp", "127.0.0.1:0")
  if err != nil { t.Fatal(err) }
  defer occupied.Close()
- server := apihttp.NewLifecycleServer(&http.Server{Addr: occupied.Addr().String()}, "{{.Environment}}")
+ server := apihttp.NewLifecycleServer(&http.Server{Addr: occupied.Addr().String()}, "{{.Environment}}", logging.New(logging.Options{Output: output}))
  if err := server.Start(context.Background()); err == nil { t.Fatal("expected occupied port error") }
  if output.Len() != 0 { t.Fatalf("failed start logged readiness: %s",output) }
 }

@@ -1,7 +1,9 @@
 package main
 
 import (
- "log"
+ "context"
+ "os"
+ "github.com/palma99/palma-framework/logging"
  pfw "github.com/palma99/palma-framework"
  "github.com/palma99/palma-framework/lifecycle"
  "{{.Module}}/internal/bootstrap"
@@ -9,15 +11,18 @@ import (
 )
 
 func main() {
- if err := run(); err != nil { log.Fatal(err) }
+ if err := run(); err != nil { os.Exit(1) }
 }
 
-func run() error {
+func run() (err error) {
+ var logger logging.Logger = logging.New(logging.Options{})
+ defer func(){ if err != nil { logger.Error(context.Background(), "application failed", "error", err) } }()
  env, err := pfw.EnvironmentFromEnv("{{.Environment}}")
  if err != nil { return err }
  cfg, err := config.Load(env)
  if err != nil { return err }
  server, cleanup, err := bootstrap.Initialize(env, cfg)
  if err != nil { return err }
+ logger = server.Logger
  return lifecycle.New(lifecycle.Options{ShutdownTimeout: cfg.HTTP.ShutdownTimeout, Cleanup: cleanup}, server).RunSignals()
 }

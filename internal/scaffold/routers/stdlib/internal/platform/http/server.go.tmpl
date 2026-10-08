@@ -2,17 +2,17 @@ package apihttp
 
 import (
  "net/http"
- "log"
  pfwhttp "github.com/palma99/palma-framework/http"
+ "github.com/palma99/palma-framework/logging"
  "{{.Module}}/internal/config"
  itemhttp "{{.Module}}/internal/item/infrastructure/http"
 )
 
 //pfw:coconut
-func Routes(items *itemhttp.Handler) *http.ServeMux {
+func Routes(items *itemhttp.Handler, logger logging.Logger) *http.ServeMux {
  mux := http.NewServeMux()
  mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-  if err := pfwhttp.OK(map[string]string{"status":"ok"}).Write(w); err != nil { log.Printf("health response: %v", err) }
+  if err := pfwhttp.OK(map[string]string{"status":"ok"}).Write(w); err != nil { logger.Error(r.Context(), "health response failed", "error", err) }
  })
  items.Register(mux)
  return mux

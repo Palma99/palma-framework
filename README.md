@@ -111,6 +111,10 @@ default, campi richiesti, parsing tipizzato e validazione. L'esempio HTTP usa
 il prefisso `HTTPAPI_` per indirizzo, timeout e utente iniziale.
 Le impostazioni possono essere raggruppate in sottostruct tramite `envPrefix`.
 
+Il [logger](docs/logging.md) espone un'interfaccia iniettabile e un'implementazione
+standard basata su `log/slog`. Gli skeleton API usano un binding esplicito per
+permettere all'applicazione di sostituirla con il proprio logger.
+
 `pfw inspect` mostra provider, provenienza, scope, binding, ordine di costruzione
 e cleanup senza scrivere file. Supporta output testuale e `-json`:
 

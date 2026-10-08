@@ -114,6 +114,7 @@ internal/
   bootstrap/                 composizione DI e wiring generato
   config/                    configurazione tipizzata e validazione
   platform/http/             router e server
+  platform/logging/          provider del logger standard sostituibile
   item/
     domain/                  entità e invarianti
     application/             casi d'uso e porta Repository
@@ -146,3 +147,8 @@ l'indirizzo effettivamente assegnato anche con porta `0`. Se il bind fallisce,
 l'avvio restituisce l'errore senza stampare un log di readiness. I test generati
 verificano sia la raggiungibilità del server dopo il log sia l'assenza del log
 quando la porta è occupata.
+
+Handler e componente lifecycle ricevono `logging.Logger` tramite DI. Il provider
+annotato in `internal/platform/logging` crea il logger standard; il binding nella
+composizione può essere sostituito con un'implementazione applicativa. La
+[guida logging](logging.md) descrive interfaccia, opzioni e override per ambiente.

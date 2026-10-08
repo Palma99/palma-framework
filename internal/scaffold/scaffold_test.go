@@ -115,11 +115,16 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 		{"api/default", "api", "", "./cmd/api"},
 		{"api/stdlib", "api", "stdlib", "./cmd/api"},
 		{"api/echo", "api", "echo", "./cmd/api"},
+		{"api/stdlib/custom-logger", "api", "stdlib", "./cmd/api"},
+		{"api/echo/custom-logger", "api", "echo", "./cmd/api"},
 	} {
 		t.Run(tpl.Name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "project with spaces")
 			if _, err := Create(Options{Template: tpl.Template, Router: tpl.Router, Directory: dir, Module: "example.test/starter", Environment: "uat", FrameworkDir: frameworkRoot(t)}); err != nil {
 				t.Fatal(err)
+			}
+			if strings.Contains(tpl.Name, "custom-logger") {
+				installCustomLogger(t, dir)
 			}
 			data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 			if err != nil {
@@ -168,5 +173,55 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 				goCommand("build", "-o", "api", "./cmd/api")
 			}
 		})
+	}
+}
+
+func installCustomLogger(t *testing.T, dir string) {
+	t.Helper()
+	compose := filepath.Join(dir, "internal/bootstrap/compose.go")
+	data, err := os.ReadFile(compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := strings.Replace(string(data), `"github.com/palma99/palma-framework/logging"`, `"github.com/palma99/palma-framework/logging"`+"\n"+`"example.test/starter/internal/platform/customlogger"`, 1)
+	source = strings.Replace(source, "pfw.Bind[logging.Logger, *logging.SlogLogger]()", "pfw.Bind[logging.Logger, *customlogger.Logger]()", 1)
+	if err := os.WriteFile(compose, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"internal/platform/customlogger/logger.go": `package customlogger
+import("context";"io";"sync/atomic";"github.com/palma99/palma-framework/logging")
+type Counts struct{Info,Error atomic.Int32}
+type Logger struct{logging.Logger;Counts *Counts}
+//pfw:coconut
+func NewLogger()*Logger{return &Logger{Logger:logging.New(logging.Options{Output:io.Discard}),Counts:&Counts{}}}
+func(l *Logger)Info(ctx context.Context,msg string,args ...any){l.Counts.Info.Add(1);l.Logger.Info(ctx,msg,args...)}
+func(l *Logger)Error(ctx context.Context,msg string,args ...any){l.Counts.Error.Add(1);l.Logger.Error(ctx,msg,args...)}
+func(l *Logger)With(args ...any)logging.Logger{return &Logger{Logger:l.Logger.With(args...),Counts:l.Counts}}
+`,
+		"internal/bootstrap/custom_logger_test.go": `package bootstrap_test
+import("context";"net/http/httptest";"testing";"time";"example.test/starter/internal/bootstrap";"example.test/starter/internal/config";"example.test/starter/internal/platform/customlogger")
+func TestLoggerBindingReplacesDefault(t *testing.T){
+ server,cleanup,err:=bootstrap.Initialize("uat",config.Config{HTTP:config.HTTPConfig{Address:"127.0.0.1:0",ReadHeaderTimeout:time.Second,ShutdownTimeout:time.Second}})
+ if err!=nil{t.Fatal(err)};defer cleanup()
+ logger,ok:=server.Logger.(*customlogger.Logger);if !ok{t.Fatalf("logger: %T",server.Logger)}
+ if err:=server.Start(context.Background());err!=nil{t.Fatal(err)}
+ t.Cleanup(func(){ctx,cancel:=context.WithTimeout(context.Background(),time.Second);defer cancel();if err:=server.Stop(ctx);err!=nil{t.Error(err)};if err:=server.Wait();err!=nil{t.Error(err)}})
+ if logger.Counts.Info.Load()!=1{t.Fatal("readiness did not use custom logger")}
+ ctx,cancel:=context.WithCancel(context.Background());cancel()
+ request:=httptest.NewRequest("GET","/items",nil).WithContext(ctx)
+ response:=httptest.NewRecorder();server.HTTP.Handler.ServeHTTP(response,request)
+ if response.Code!=500||logger.Counts.Error.Load()!=1{t.Fatalf("HTTP did not use same custom logger: status=%d errors=%d",response.Code,logger.Counts.Error.Load())}
+}
+`,
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

@@ -1,0 +1,8 @@
+package applogging
+
+import "github.com/palma99/palma-framework/logging"
+
+//pfw:coconut
+func NewLogger() *logging.SlogLogger {
+ return logging.New(logging.Options{})
+}

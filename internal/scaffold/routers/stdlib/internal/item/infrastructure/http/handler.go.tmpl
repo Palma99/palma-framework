@@ -1,17 +1,18 @@
 package itemhttp
 
 import (
- "log"
  "net/http"
+ "context"
  pfwhttp "github.com/palma99/palma-framework/http"
+ "github.com/palma99/palma-framework/logging"
  "{{.Module}}/internal/item/application"
 )
 
-type Handler struct { service *application.Service; errors *pfwhttp.Mapper }
+type Handler struct { service *application.Service; errors *pfwhttp.Mapper; logger logging.Logger }
 
 //pfw:coconut
-func NewHandler(service *application.Service) *Handler {
- return &Handler{service: service, errors: newErrorMapper()}
+func NewHandler(service *application.Service, logger logging.Logger) *Handler {
+ return &Handler{service: service, errors: newErrorMapper(), logger: logger}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -20,28 +21,28 @@ func (h *Handler) Register(mux *http.ServeMux) {
  mux.HandleFunc("POST /items", h.create)
 }
 
-func report(err error) { if err != nil { log.Printf("HTTP response: %v", err) } }
-func (h *Handler) fail(w http.ResponseWriter, err error) {
+func (h *Handler) report(ctx context.Context, err error) { if err != nil { h.logger.Error(ctx, "HTTP response failed", "error", err) } }
+func (h *Handler) fail(w http.ResponseWriter, r *http.Request, err error) {
  mapped := h.errors.Map(err)
- if mapped.Status >= 500 { log.Printf("request failed: %v", err) }
- report(mapped.Write(w))
+ if mapped.Status >= 500 { h.logger.Error(r.Context(), "request failed", "error", err) }
+ h.report(r.Context(), mapped.Write(w))
 }
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
  items, err := h.service.List(r.Context())
- if err != nil { h.fail(w, err); return }
+ if err != nil { h.fail(w, r, err); return }
  result := make([]itemResponse, 0, len(items))
  for _, item := range items { result = append(result, response(item)) }
- report(pfwhttp.OK(result).Write(w))
+ h.report(r.Context(), pfwhttp.OK(result).Write(w))
 }
 func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
  item, err := h.service.Get(r.Context(), r.PathValue("id"))
- if err != nil { h.fail(w, err); return }
- report(pfwhttp.OK(response(item)).Write(w))
+ if err != nil { h.fail(w, r, err); return }
+ h.report(r.Context(), pfwhttp.OK(response(item)).Write(w))
 }
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
  input, err := pfwhttp.DecodeJSON[struct { Name string `json:"name"` }](r, pfwhttp.DecodeOptions{})
- if err != nil { h.fail(w, err); return }
+ if err != nil { h.fail(w, r, err); return }
  item, err := h.service.Create(r.Context(), input.Name)
- if err != nil { h.fail(w, err); return }
- report(pfwhttp.Created("/items/"+item.ID, response(item)).Write(w))
+ if err != nil { h.fail(w, r, err); return }
+ h.report(r.Context(), pfwhttp.Created("/items/"+item.ID, response(item)).Write(w))
 }

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Interfaccia `logging.Logger` sostituibile tramite DI e implementazione standard
+  basata su `log/slog`, con livelli, contesto e campi strutturati.
+- Logger iniettato negli skeleton API per readiness, errori HTTP e lifecycle.
+
 - Template con discovery `../...` e provider annotati `//pfw:coconut`, senza
   liste esplicite di costruttori.
 - Log di readiness dell'API con indirizzo e ambiente, dopo il bind del listener,

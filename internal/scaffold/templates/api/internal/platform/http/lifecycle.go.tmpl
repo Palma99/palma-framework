@@ -2,10 +2,10 @@ package apihttp
 
 import (
  "context"
- "log"
  "net/http"
  pfw "github.com/palma99/palma-framework"
  "github.com/palma99/palma-framework/transport/httpserver"
+ "github.com/palma99/palma-framework/logging"
 )
 
 // LifecycleServer logs readiness only after the listener has been bound.
@@ -13,15 +13,16 @@ type LifecycleServer struct {
  *httpserver.Server
  HTTP *http.Server
  environment pfw.Environment
+ Logger logging.Logger
 }
 
 //pfw:coconut
-func NewLifecycleServer(server *http.Server, env pfw.Environment) *LifecycleServer {
- return &LifecycleServer{Server: httpserver.New(server), HTTP: server, environment: env}
+func NewLifecycleServer(server *http.Server, env pfw.Environment, logger logging.Logger) *LifecycleServer {
+ return &LifecycleServer{Server: httpserver.New(server), HTTP: server, environment: env, Logger: logger}
 }
 
 func (s *LifecycleServer) Start(ctx context.Context) error {
  if err := s.Server.Start(ctx); err != nil { return err }
- log.Printf("server started address=%s environment=%s", s.Addr().String(), s.environment)
+ s.Logger.Info(ctx, "server started", "address", s.Addr().String(), "environment", s.environment)
  return nil
 }
