@@ -133,3 +133,8 @@ Gli errori di routing fuori da questi endpoint restano gestiti da Echo.
 I test passano attraverso il composition root generato e verificano il flusso
 creazione/ricerca/elenco, validazione, errori e concorrenza del repository.
 SIGINT/SIGTERM attivano il lifecycle e lo shutdown con timeout di 5 secondi.
+
+I controller registrano rotte locali su gruppi Echo; `internal/platform/http/server.go`
+sceglie i prefissi. I middleware usano le API native di Echo. Gli errori applicativi
+sono restituiti dagli handler e gestiti dal router con mapper e logger iniettati.
+Vedi la [guida al routing](../../docs/routing.md).

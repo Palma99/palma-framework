@@ -1,0 +1,64 @@
+package itemhttp
+
+import (
+ "github.com/labstack/echo/v5"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ "{{.Module}}/internal/item/application"
+)
+
+type Controller struct {
+  service *application.Service;
+}
+
+//pfw:coconut
+func NewController(
+  service *application.Service,
+) *Controller {
+  return &Controller{
+    service: service,
+  }
+}
+
+// Register mounts local routes on a group chosen by the HTTP composition.
+func (h *Controller) Register(group *echo.Group) {
+  group.GET("", h.List)
+  group.GET("/:id", h.Get)
+  group.POST("", h.Create)
+}
+
+func (h *Controller) List(ctx *echo.Context) error {
+  items, err := h.service.List(ctx.Request().Context())
+  if err != nil {
+    return err
+  }
+
+  result := make([]itemResponse, 0, len(items))
+  for _, item := range items {
+    result = append(result, response(item))
+  }
+
+  return pfwhttp.OK(result).Write(ctx.Response())
+}
+
+func (h *Controller) Get(ctx *echo.Context) error {
+  item, err := h.service.Get(ctx.Request().Context(), ctx.Param("id"))
+  if err != nil {
+    return err
+  }
+
+  return pfwhttp.OK(response(item)).Write(ctx.Response())
+}
+
+func (h *Controller) Create(ctx *echo.Context) error {
+  input, err := pfwhttp.DecodeJSON[struct { Name string `json:"name"` }](ctx.Request(), pfwhttp.DecodeOptions{})
+  if err != nil { 
+    return err
+  }
+
+  item, err := h.service.Create(ctx.Request().Context(), input.Name)
+  if err != nil {
+    return err
+  }
+
+  return pfwhttp.Created(ctx.Request().URL.Path+"/"+item.ID, response(item)).Write(ctx.Response())
+}

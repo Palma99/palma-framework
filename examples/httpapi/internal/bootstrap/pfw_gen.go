@@ -13,6 +13,7 @@ import (
 	userhttp "github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/http"
 	memory "github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/memory"
 	application "github.com/palma99/palma-framework/examples/httpapi/internal/user/application"
+	logging "github.com/palma99/palma-framework/logging"
 	http "net/http"
 )
 
@@ -28,9 +29,10 @@ func Initialize(input0 context.Context, input1 pfw.Environment, input2 config.Co
 		return zero, nil, errors.Join(fmt.Errorf("pfw: github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/memory.NewMemoryStore: %w", err), cleanup())
 	}
 	value1 := application.NewService(value0)
-	value2 := userhttp.NewErrorMapper()
-	value3 := userhttp.NewController(value1, value2)
-	value4 := apihttp.Routes(value3)
-	value5 := apihttp.Server(value4, input2)
-	return value5, cleanup, nil
+	value2 := userhttp.NewController(value1)
+	value3 := userhttp.NewErrorMapper()
+	value4 := logging.NewDefault()
+	value5 := apihttp.Routes(value2, value3, value4)
+	value6 := apihttp.Server(value5, input2)
+	return value6, cleanup, nil
 }

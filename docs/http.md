@@ -95,10 +95,15 @@ fornirne un'altra che soddisfa questo contratto.
 ## Integrazione DI
 
 Nell'esempio `internal/user/adapter/http`, `NewErrorMapper` è un costruttore
-annotato `//pfw:coconut`. Il controller riceve `pfwhttp.ErrorMapper` nel costruttore.
-Il modulo `Users` abilita `AutoBind()`:
+annotato `//pfw:coconut`. La composizione HTTP riceve `pfwhttp.ErrorMapper` nel costruttore del router.
+La composizione radice abilita `AutoBind()`:
 il generatore seleziona `*pfwhttp.Mapper` perché è l'unica implementazione
 registrata dell'interfaccia. Se ne vengono registrate più di una occorre
 `pfw.Implementation` o `pfw.Bind`; senza `AutoBind` il binding va dichiarato.
 Gli errori di routing o middleware restano gestibili con gli strumenti nativi
 della libreria HTTP scelta.
+
+## Routing e middleware
+
+La [guida al routing](routing.md) descrive controller con rotte locali,
+montaggio esplicito, middleware nativi e gestione degli errori al confine HTTP.

@@ -1,0 +1,34 @@
+package itemhttp_test
+
+import (
+ "net/http"
+ "net/http/httptest"
+ "strings"
+ "testing"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ itemhttp "{{.Module}}/internal/item/infrastructure/http"
+ "{{.Module}}/internal/item/application"
+ "{{.Module}}/internal/item/infrastructure/memory"
+)
+
+func TestControllerMountAndMiddleware(t *testing.T) {
+ adapter := pfwhttp.NewHandlerAdapter(itemhttp.NewErrorMapper(), nil)
+ controller := itemhttp.NewController(application.NewService(memory.NewStore()), adapter)
+ mux := http.NewServeMux()
+ controller.Register(mux, "/api/v1/items")
+ deny := func(next http.Handler) http.Handler { return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(401) }) }
+ controller.Register(mux, "/admin/items", deny)
+ mux.Handle("POST /api/v1/items/protected", deny(adapter.Wrap(controller.Create)))
+ request := func(method, path, body string) *httptest.ResponseRecorder {
+  r := httptest.NewRequest(method, path, strings.NewReader(body)); r.Header.Set("Content-Type", "application/json")
+  w := httptest.NewRecorder(); mux.ServeHTTP(w, r); return w
+ }
+ for _, path := range []string{"/admin/items", "/api/v1/items/protected"} {
+  if w := request("POST", path, `{"name":"Blocked"}`); w.Code != 401 { t.Fatalf("protected: %d %s", w.Code, w.Body) }
+ }
+ if w := request("GET", "/api/v1/items", ""); w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" { t.Fatalf("public: %d %s", w.Code, w.Body) }
+ created := request("POST", "/api/v1/items", `{"name":"Ada"}`)
+ location := created.Header().Get("Location")
+ if created.Code != 201 || !strings.HasPrefix(location, "/api/v1/items/") { t.Fatalf("location: %d %q", created.Code, location) }
+ if w := request("GET", location, ""); w.Code != 200 || w.Body.String() != created.Body.String() { t.Fatalf("get: %d %s", w.Code, w.Body) }
+}

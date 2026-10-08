@@ -9,16 +9,21 @@ import (
 )
 
 //pfw:coconut
-func Routes(items *itemhttp.Handler, logger logging.Logger) *http.ServeMux {
+func Routes(items *itemhttp.Controller, logger logging.Logger) *http.ServeMux {
  mux := http.NewServeMux()
  mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
   if err := pfwhttp.OK(map[string]string{"status":"ok"}).Write(w); err != nil { logger.Error(r.Context(), "health response failed", "error", err) }
  })
- items.Register(mux)
+ items.Register(mux, "/items")
  return mux
 }
 
 //pfw:coconut
 func Server(mux *http.ServeMux, cfg config.Config) *http.Server {
  return &http.Server{Addr: cfg.HTTP.Address, Handler: mux, ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout}
+}
+
+//pfw:coconut
+func HandlerAdapter(errors pfwhttp.ErrorMapper, logger logging.Logger) *pfwhttp.HandlerAdapter {
+ return pfwhttp.NewHandlerAdapter(errors, logger)
 }

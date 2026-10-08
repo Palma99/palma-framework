@@ -84,7 +84,7 @@ func TestPublishedVersionAndBundledFiles(t *testing.T) {
 	if file.Module.Mod.Path != "example.com/app" || file.Require[0].Mod.Version != "v0.1.0" || len(file.Replace) != 0 || len(file.Tool) != 1 {
 		t.Fatalf("go.mod: %s", data)
 	}
-	for _, name := range []string{"pfw.toml", ".gitignore", ".env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/handler.go", "internal/item/infrastructure/memory/store.go"} {
+	for _, name := range []string{"pfw.toml", ".gitignore", ".env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/controller.go", "internal/item/infrastructure/memory/store.go"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +147,7 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 				t.Fatalf("unexpected router dependency: %s", data)
 			}
 			if tpl.Template == "api" {
-				handler, err := os.ReadFile(filepath.Join(dir, "internal/item/infrastructure/http/handler.go"))
+				handler, err := os.ReadFile(filepath.Join(dir, "internal/item/infrastructure/http/controller.go"))
 				if err != nil {
 					t.Fatal(err)
 				}

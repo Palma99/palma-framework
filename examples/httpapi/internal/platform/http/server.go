@@ -6,11 +6,15 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
 	userhttp "github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/http"
+	pfwhttp "github.com/palma99/palma-framework/http"
+	"github.com/palma99/palma-framework/logging"
+	pfwecho "github.com/palma99/palma-framework/transport/echo"
 )
 
-func Routes(users *userhttp.Controller) *echo.Echo {
+func Routes(users *userhttp.Controller, errors pfwhttp.ErrorMapper, logger logging.Logger) *echo.Echo {
 	router := echo.New()
-	users.Register(router)
+	router.HTTPErrorHandler = pfwecho.ErrorHandler(errors, logger)
+	users.Register(router.Group("/users"))
 	return router
 }
 

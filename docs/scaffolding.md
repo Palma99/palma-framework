@@ -65,7 +65,7 @@ I file comuni risiedono in `internal/scaffold/templates/api`. I file specifici
 del router sono inclusi da `internal/scaffold/routers/<nome>` e applicati come
 variante del trasporto HTTP. Per aggiungere un router in futuro, aggiungere
 la sua voce al registro `Routers()` (con le eventuali dipendenze) e i template
-di handler e server nella nuova directory. Dominio, application, configurazione,
+di controller e server nella nuova directory. Dominio, application, configurazione,
 storage e test del contratto HTTP rimangono condivisi. Gin e Chi non sono
 ancora disponibili.
 
@@ -193,3 +193,5 @@ Il TOML viene letto solo quando serve un target implicito: sintassi errata,
 chiavi sconosciute, tipi errati e percorsi vuoti producono un errore esplicito.
 L'ambiente continua a essere selezionato con i flag esistenti e, per `run`,
 con `PFW_ENV`. `run` trova la composizione raggiungibile dal main selezionato.
+
+Per controller, montaggio e middleware nativi vedere la [guida al routing](routing.md).

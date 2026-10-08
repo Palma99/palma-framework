@@ -1,0 +1,74 @@
+package itemhttp
+
+import (
+ "net/http"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ "{{.Module}}/internal/item/application"
+)
+
+type Controller struct {
+  service *application.Service;
+  handlers *pfwhttp.HandlerAdapter;
+}
+
+//pfw:coconut
+func NewController(
+  service *application.Service,
+  handlers *pfwhttp.HandlerAdapter,
+) *Controller {
+  return &Controller{
+    service: service,
+    handlers: handlers,
+  }
+}
+
+// Register mounts routes at a prefix owned by the HTTP composition.
+func (h *Controller) Register(mux *http.ServeMux, prefix string, middleware ...func(http.Handler) http.Handler) {
+  mount := func(pattern string, endpoint func(http.ResponseWriter, *http.Request) error) {
+    var handler http.Handler = h.handlers.Wrap(endpoint)
+    for i := len(middleware)-1; i >= 0; i-- {
+      handler = middleware[i](handler)
+    }
+    mux.Handle(pattern, handler)
+  }
+  mount("GET "+prefix, h.List)
+  mount("GET "+prefix+"/{id}", h.Get)
+  mount("POST "+prefix, h.Create)
+}
+
+func (h *Controller) List(w http.ResponseWriter, r *http.Request) error {
+  items, err := h.service.List(r.Context())
+  if err != nil {
+    return err
+  }
+
+  result := make([]itemResponse, 0, len(items))
+  for _, item := range items {
+    result = append(result, response(item))
+  }
+
+  return pfwhttp.OK(result).Write(w)
+}
+
+func (h *Controller) Get(w http.ResponseWriter, r *http.Request) error {
+  item, err := h.service.Get(r.Context(), r.PathValue("id"))
+  if err != nil {
+    return err
+  }
+
+  return pfwhttp.OK(response(item)).Write(w)
+}
+
+func (h *Controller) Create(w http.ResponseWriter, r *http.Request) error {
+  input, err := pfwhttp.DecodeJSON[struct { Name string `json:"name"` }](r, pfwhttp.DecodeOptions{})
+  if err != nil {
+    return err
+  }
+
+  item, err := h.service.Create(r.Context(), input.Name)
+  if err != nil {
+    return err
+  }
+
+  return pfwhttp.Created(r.URL.Path+"/"+item.ID, response(item)).Write(w)
+}

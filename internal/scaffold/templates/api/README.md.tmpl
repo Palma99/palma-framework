@@ -46,7 +46,7 @@ Modules inherit this setting unless they declare their own `pfw.AutoBind()` or
 Domain factories and other helpers do not need annotations.
 
 `NewErrorMapper` is an annotated provider in
-`internal/item/infrastructure/http/error_mapper.go`. Handlers receive
+`internal/item/infrastructure/http/error_mapper.go`. The HTTP composition receives
 `pfwhttp.ErrorMapper` through DI; autobinding selects the discovered `*pfwhttp.Mapper`.
 Change its rules in the provider, or add a custom mapper and an explicit binding
 when multiple compatible implementations are discovered.
@@ -55,7 +55,7 @@ The server logs `server started` with the bound address and environment after
 successfully opening its listener. Startup errors do not emit a readiness log.
 The framework HTTP lifecycle component is used with both stdlib and Echo routers.
 
-HTTP handlers and the lifecycle component receive `logging.Logger` through DI.
+The HTTP error boundary and the lifecycle component receive `logging.Logger` through DI.
 Palma supplies the standard logger and HTTP lifecycle component as fallback
 providers. There is no application logger factory or lifecycle wrapper to maintain.
 
@@ -92,3 +92,25 @@ No environment name has implicit production or database semantics.
 `pfw.toml` configures the bootstrap and main package paths, relative to the module
 root. `go tool pfw generate`, `inspect` and `run` use these paths when no package
 is supplied; explicit package arguments override them.
+
+## Controllers and middleware
+
+`internal/item/infrastructure/http/controller.go` owns local endpoints (`List`,
+`Get`, `Create`). `internal/platform/http/server.go` mounts them at `/items`.
+Move the mount to `/api/v1/items` to version the API; creation responses use
+that mount in their `Location` header.
+
+{{if eq .Router "echo"}}`Controller.Register` receives an `*echo.Group`. Use native group middleware at
+the mount, or pass `echo.MiddlewareFunc` values to individual `GET`/`POST`
+registrations. Handlers return errors; the router's `HTTPErrorHandler` applies
+the injected application mapper. Native Echo routing and middleware errors
+retain their status and error handling.
+{{else}}`Controller.Register` receives a mux, a prefix and optional middleware of type
+`func(http.Handler) http.Handler`. Middleware values run in declaration order.
+Handlers return errors and use `pfwhttp.HandlerAdapter.Wrap` to become native
+`http.HandlerFunc` values. Wrap individual endpoints in `Register` to apply
+route-specific middleware, or wrap the server's mux for global middleware.
+{{end}}
+Middleware components can receive services through DI. Adding a controller
+requires an explicit mount in the HTTP composition; provider discovery does
+not expose routes automatically.

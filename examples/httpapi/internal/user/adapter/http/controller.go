@@ -9,18 +9,17 @@ import (
 
 type Controller struct {
 	service *application.Service
-	errors  pfwhttp.ErrorMapper
 }
 
 //pfw:coconut
-func NewController(service *application.Service, errors pfwhttp.ErrorMapper) *Controller {
-	return &Controller{service: service, errors: errors}
+func NewController(service *application.Service) *Controller {
+	return &Controller{service: service}
 }
 
-func (c *Controller) Register(router *echo.Echo) {
-	router.GET("/users", c.list)
-	router.GET("/users/:id", c.get)
-	router.POST("/users", c.create)
+func (c *Controller) Register(group *echo.Group) {
+	group.GET("", c.List)
+	group.GET("/:id", c.Get)
+	group.POST("", c.Create)
 }
 
 type userResponse struct {
@@ -30,10 +29,10 @@ type userResponse struct {
 
 func response(user domain.User) userResponse { return userResponse{ID: user.ID, Name: user.Name} }
 
-func (c *Controller) list(ctx *echo.Context) error {
+func (c *Controller) List(ctx *echo.Context) error {
 	users, err := c.service.List(ctx.Request().Context())
 	if err != nil {
-		return c.errors.Write(ctx.Response(), err)
+		return err
 	}
 	result := make([]userResponse, 0, len(users))
 	for _, user := range users {
@@ -42,10 +41,10 @@ func (c *Controller) list(ctx *echo.Context) error {
 	return pfwhttp.OK(result).Write(ctx.Response())
 }
 
-func (c *Controller) get(ctx *echo.Context) error {
+func (c *Controller) Get(ctx *echo.Context) error {
 	user, err := c.service.Get(ctx.Request().Context(), ctx.Param("id"))
 	if err != nil {
-		return c.errors.Write(ctx.Response(), err)
+		return err
 	}
 	return pfwhttp.OK(response(user)).Write(ctx.Response())
 }
@@ -54,14 +53,14 @@ type createRequest struct {
 	Name string `json:"name"`
 }
 
-func (c *Controller) create(ctx *echo.Context) error {
+func (c *Controller) Create(ctx *echo.Context) error {
 	input, err := pfwhttp.DecodeJSON[createRequest](ctx.Request(), pfwhttp.DecodeOptions{})
 	if err != nil {
-		return c.errors.Write(ctx.Response(), err)
+		return err
 	}
 	user, err := c.service.Create(ctx.Request().Context(), input.Name)
 	if err != nil {
-		return c.errors.Write(ctx.Response(), err)
+		return err
 	}
-	return pfwhttp.Created("/users/"+user.ID, response(user)).Write(ctx.Response())
+	return pfwhttp.Created(ctx.Request().URL.Path+"/"+user.ID, response(user)).Write(ctx.Response())
 }

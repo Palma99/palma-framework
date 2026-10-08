@@ -25,6 +25,7 @@ func Initialize(ctx context.Context, env pfw.Environment, cfg config.Config) (*h
 	return pfw.BuildWithCleanup[*http.Server](
 		pfw.Environments(pfw.Local, pfw.Staging, "uat", pfw.Production),
 		Users,
+		pfw.AutoBind(),
 		pfw.Constructors(apihttp.Routes, apihttp.Server),
 	)
 }

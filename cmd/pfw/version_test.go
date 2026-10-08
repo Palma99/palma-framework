@@ -48,7 +48,7 @@ func TestReleaseBinaryVersionAndDefaultDependency(t *testing.T) {
 	if !found || len(module.Replace) != 0 {
 		t.Fatalf("release dependency: %s", data)
 	}
-	for _, name := range []string{"internal/item/infrastructure/http/handler.go", "internal/platform/http/server.go"} {
+	for _, name := range []string{"internal/item/infrastructure/http/controller.go", "internal/platform/http/server.go"} {
 		data, err := os.ReadFile(filepath.Join(app, name))
 		if err != nil || !strings.Contains(string(data), "echo") {
 			t.Fatalf("bundled Echo template: %v %s", err, data)
