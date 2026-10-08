@@ -6,7 +6,7 @@ import (
 )
 
 func TestInvalidCommand(t *testing.T) {
-	for _, args := range [][]string{nil, {"unknown"}, {"generate", "-unknown"}} {
+	for _, args := range [][]string{{"unknown"}, {"generate", "-unknown"}} {
 		var output bytes.Buffer
 		if err := run(args, &output, &output); err == nil {
 			t.Fatalf("run(%v) unexpectedly succeeded", args)

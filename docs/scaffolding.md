@@ -80,7 +80,7 @@ Per l'API creata sopra:
 cd /tmp/palma-api
 go mod tidy
 cp .env.example .env
-go tool pfw run -env uat ./cmd/api
+go tool pfw run -env uat
 ```
 
 Per hello world:
@@ -88,7 +88,7 @@ Per hello world:
 ```sh
 cd /tmp/palma-hello
 go mod tidy
-go tool pfw run -env dev ./cmd/app
+go tool pfw run -env dev
 ```
 
 `run` genera il wiring per l'ambiente selezionato, compila e avvia. Per separare
@@ -96,7 +96,7 @@ le operazioni, il progetto include anche una direttiva `go:generate`:
 
 ```sh
 go generate ./internal/bootstrap
-go tool pfw generate -env uat -check ./internal/bootstrap
+go tool pfw generate -env uat -check
 go test ./...
 go build -o bin/api ./cmd/api
 PFW_ENV=uat ./bin/api
@@ -137,7 +137,10 @@ Entrambi i template includono `pfw.Discover("../...")` nella composizione:
 la discovery copre tutti i package sotto `internal`. I costruttori dei provider
 sono annotati con `//pfw:coconut`; per aggiungere un nuovo provider basta
 annotare il suo costruttore, senza mantenere una lista `pfw.Constructors`.
-I binding delle interfacce rimangono espliciti, come quello di `Repository`.
+La composizione radice include `pfw.AutoBind()`: un unico provider compatibile
+viene selezionato automaticamente per ciascuna interfaccia. I moduli ereditano
+questa impostazione, salvo un proprio `AutoBind()` oppure `AutoBind(false)`. Con più
+candidati occorre un `pfw.Bind` esplicito, che prevale sull'autobinding.
 Le factory di dominio e gli helper che non sono provider DI non sono annotati.
 
 L'API usa il componente lifecycle HTTP fornito dal framework per entrambi i router. Dopo il bind della
@@ -152,3 +155,41 @@ fornisce il logger standard e il componente HTTP come fallback: non vengono
 creati file applicativi per questi provider. Per personalizzare il comportamento,
 registrare provider applicativi e gli eventuali binding, anche attraverso `ForEnv`.
 La [guida logging](logging.md) descrive le precedenze e le opzioni.
+
+Il mapper degli errori è un provider annotato (`NewErrorMapper`) in
+`internal/item/infrastructure/http/error_mapper.go`. Gli handler ricevono
+`pfwhttp.ErrorMapper` dal grafo; l'autobinding seleziona `*pfwhttp.Mapper`.
+Le regole applicative vengono definite nel provider; per una propria
+implementazione registrare il relativo costruttore e aggiungere un binding
+esplicito se rimangono disponibili più mapper compatibili.
+
+## Percorsi dei comandi in `pfw.toml`
+
+`pfw new` crea `pfw.toml` accanto a `go.mod`. Per il template API:
+
+```toml
+bootstrap = "./internal/bootstrap"
+main = "./cmd/api"
+```
+
+Il template hello-world usa `main = "./cmd/app"`. Puoi modificare questi
+percorsi quando sposti i package. Sono directory di package Go, relative alla
+root del modulo, non nomi di singoli file `.go`.
+
+```sh
+go tool pfw generate -env dev
+go tool pfw inspect
+go tool pfw run -env dev
+go tool pfw run -env dev -- -verbose
+```
+
+Se ometti i package, la CLI cerca il `go.mod` più vicino risalendo dalla directory
+corrente e legge il `pfw.toml` accanto a esso. Funziona anche dalle sottocartelle.
+Senza file TOML, o per chiavi omesse, i default sono `./internal/bootstrap` e
+`./cmd/app`. Per un'API esistente aggiungi `main = "./cmd/api"`.
+I package passati esplicitamente prevalgono e mantengono la risoluzione dalla
+directory corrente (`.` permette di selezionare il package corrente).
+Il TOML viene letto solo quando serve un target implicito: sintassi errata,
+chiavi sconosciute, tipi errati e percorsi vuoti producono un errore esplicito.
+L'ambiente continua a essere selezionato con i flag esistenti e, per `run`,
+con `PFW_ENV`. `run` trova la composizione raggiungibile dal main selezionato.

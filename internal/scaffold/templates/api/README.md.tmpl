@@ -9,7 +9,7 @@ use cases and repository port are independent of the router.
 ```sh
 go mod tidy
 cp .env.example .env
-go tool pfw run -env {{.Environment}} ./cmd/api
+go tool pfw run -env {{.Environment}}
 ```
 
 ```sh
@@ -20,8 +20,8 @@ curl http://localhost:8080/items/1
 ```
 
 The memory implementation is usable immediately. Data is lost on restart. Implement
-`application.Repository` in the persistence infrastructure and update the binding in
-`internal/bootstrap/compose.go` when you need a database.
+`application.Repository` in the persistence infrastructure and add its annotated provider when you need a database. If both implementations
+remain discovered, select one with a binding in `internal/bootstrap/compose.go`.
 
 ## Architecture
 
@@ -39,8 +39,17 @@ The memory implementation is usable immediately. Data is lost on restart. Implem
 The composition uses `pfw.Discover("../...")` to discover providers throughout
 `internal`. Mark each dependency constructor with `//pfw:coconut`, immediately
 above its declaration. The starter providers already have these annotations;
-there is no constructor list to maintain. The repository binding stays explicit.
+there is no constructor list to maintain. `pfw.AutoBind()` is enabled at the build
+root: interfaces with one compatible provider are selected automatically.
+Modules inherit this setting unless they declare their own `pfw.AutoBind()` or
+`pfw.AutoBind(false)`. With multiple candidates, add an explicit `pfw.Bind`.
 Domain factories and other helpers do not need annotations.
+
+`NewErrorMapper` is an annotated provider in
+`internal/item/infrastructure/http/error_mapper.go`. Handlers receive
+`pfwhttp.ErrorMapper` through DI; autobinding selects the discovered `*pfwhttp.Mapper`.
+Change its rules in the provider, or add a custom mapper and an explicit binding
+when multiple compatible implementations are discovered.
 
 The server logs `server started` with the bound address and environment after
 successfully opening its listener. Startup errors do not emit a readiness log.
@@ -61,7 +70,7 @@ The main reports bootstrap errors on stderr and does not create another logger.
 
 ```sh
 go generate ./internal/bootstrap
-go tool pfw generate -env {{.Environment}} -check ./internal/bootstrap
+go tool pfw generate -env {{.Environment}} -check
 go test ./...
 go build -o bin/api ./cmd/api
 PFW_ENV={{.Environment}} ./bin/api
@@ -79,3 +88,7 @@ environment matches the generated graph.
 `.env`, `.env.<environment>` and `.env.<environment>.local` are layered in that
 order; process variables win. `.env.example` documents available settings.
 No environment name has implicit production or database semantics.
+
+`pfw.toml` configures the bootstrap and main package paths, relative to the module
+root. `go tool pfw generate`, `inspect` and `run` use these paths when no package
+is supplied; explicit package arguments override them.

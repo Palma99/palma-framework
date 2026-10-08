@@ -31,12 +31,15 @@ pfw version
 pfw new -template api -router echo -module example.com/myapi ./myapi
 cd myapi
 go mod tidy
-go tool pfw run -env dev ./cmd/api
+go tool pfw run -env dev
 ```
 
 La CLI installata deve essere nel `PATH`. Per un'applicazione minimale scegliere
 `-template hello-world`; per l'API standard scegliere `-router stdlib`.
 Il progetto include la CLI come tool Go e fissa la stessa versione della libreria.
+`pfw.toml` salva i percorsi dei package bootstrap e main: `generate`, `inspect`
+e `run` li usano quando ometti il package. Gli argomenti espliciti prevalgono;
+vedi [configurazione dei percorsi](docs/scaffolding.md#percorsi-dei-comandi-in-pfwtoml).
 
 Per usare soltanto la libreria in un modulo esistente:
 
@@ -89,9 +92,10 @@ L'API usa `pfw.Constructors` per registrare i costruttori e
 `pfw.Implementation` (o il suo alias `pfw.Bind`) per collegare le interfacce.
 Con `pfw.Discover` può anche registrare automaticamente le funzioni annotate
 `//pfw:coconut` nei package selezionati, combinandole con le registrazioni manuali.
-Il binding è esplicito di default. `pfw.AutoBind()` dentro un modulo abilita
-la selezione di un'implementazione concreta unica fra i suoi provider; con più
-candidati occorre un binding esplicito.
+Il binding è esplicito di default. `pfw.AutoBind()` abilita la selezione di
+un'implementazione concreta unica nella radice o in un modulo. I moduli ereditano
+il globale, salvo un proprio `AutoBind(true/false)`; con più candidati occorre
+un binding esplicito.
 
 I costruttori possono restituire `T`, `(T, error)` oppure
 `(T, func() error, error)` per le risorse. In quest'ultimo caso il composition

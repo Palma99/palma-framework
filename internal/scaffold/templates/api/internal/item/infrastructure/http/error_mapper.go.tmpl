@@ -1,0 +1,15 @@
+package itemhttp
+
+import (
+ "net/http"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ "{{.Module}}/internal/item/domain"
+)
+
+//pfw:coconut
+func NewErrorMapper() *pfwhttp.Mapper {
+ return pfwhttp.NewMapper(
+  pfwhttp.Is(domain.ErrInvalidName, pfwhttp.NewError(http.StatusUnprocessableEntity, "invalid_name", domain.ErrInvalidName.Error())),
+  pfwhttp.Is(domain.ErrNotFound, pfwhttp.NewError(http.StatusNotFound, "not_found", "item not found")),
+ )
+}

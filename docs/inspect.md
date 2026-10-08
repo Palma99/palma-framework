@@ -11,9 +11,10 @@ go run ./cmd/pfw inspect -color=always ./examples/httpapi/internal/bootstrap
 go run ./cmd/pfw inspect -env local ./examples/httpapi/internal/bootstrap
 ```
 
-Con la CLI installata: `pfw inspect [packages...]`. Senza pattern analizza il
-package della directory corrente. I pattern seguono le stesse regole Go usate
-da `generate`, per esempio `./...`. La discovery resta limitata ai package
+Con la CLI installata: `pfw inspect [packages...]`. Senza pattern usa `bootstrap`
+nel `pfw.toml` alla root del modulo, con default `./internal/bootstrap`. I percorsi
+configurati sono relativi alla root del modulo. I pattern espliciti prevalgono
+e seguono le stesse regole Go usate da `generate`, per esempio `.` o `./...`. La discovery resta limitata ai package
 selezionati nei marker `Discover` dei singoli initializer.
 
 ## Contenuto del report
@@ -30,6 +31,8 @@ Il report distingue ogni initializer e mostra:
 - Stato `used`, `unused` o `excluded` dei provider candidati.
 - Provenienza `framework_default` e campo JSON `fallback` per i provider standard
   usati quando mancano registrazioni applicative.
+- Impostazione globale `autobind` dell'initializer e valore ereditato/locale dei
+  moduli; gli scope riportati per provider e binding riflettono la precedenza effettiva.
 - Binding manuali, automatici e `direct` (input/provider già tipizzato con
   l'interfaccia), con consumer e provider selezionato.
 - Ordine di costruzione effettivo e ordine inverso dei cleanup raggiungibili.

@@ -19,9 +19,10 @@ func Discover(patterns ...string) Registration { return Registration{} }
 // Explicit Constructors registrations remain available.
 func Exclude(constructors ...any) Registration { return Registration{} }
 
-// AutoBind enables interface inference for providers in its enclosing Module,
-// including nested modules. Other modules remain explicit by default.
-func AutoBind() Registration { return Registration{} }
+// AutoBind configures interface inference at Build/BuildWithCleanup or Module
+// level. No argument means true; false disables inference in that scope.
+// Modules inherit the nearest enclosing setting unless they declare their own.
+func AutoBind(enabled ...bool) Registration { return Registration{} }
 
 // Implementation selects Concrete as the implementation of Interface. The generator
 // verifies implementation using Go's type system.

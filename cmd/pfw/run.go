@@ -20,7 +20,17 @@ import (
 	"github.com/palma99/palma-framework/internal/generate"
 )
 
-var runCommand = command{usage: "run [-env name] [-env-dir directory] [-shutdown-timeout duration] [main-package] [-- app-args...]", run: runApplication}
+var runCommand = command{
+	usage:       "run [options] [main-package] [-- app-args...]",
+	description: "Generate wiring, build and start an application",
+	examples: []string{
+		"go tool pfw run -env dev ./cmd/api",
+		"go tool pfw run -env dev -env-dir ./configuration ./cmd/api",
+		"go tool pfw run -env dev ./cmd/api -- -verbose",
+	},
+	notes: []string{"The main package defaults to main in the module root's pfw.toml, or ./cmd/app. An explicit package overrides configuration. Use -- to pass app arguments with the default package.", "-env takes precedence over PFW_ENV. An environment must be selected before startup.", "Loads .env, .env.<environment> and .env.<environment>.local; process variables take precedence. Arguments after the package are forwarded to the application."},
+	run:   runApplication,
+}
 
 type applicationExit struct{ code int }
 
@@ -31,10 +41,17 @@ func (e *applicationExit) Error() string {
 func runApplication(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("pfw run", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	envFlag := flags.String("env", "", "environment (or PFW_ENV)")
-	envDir := flags.String("env-dir", "", "dotenv directory (default module root)")
-	grace := flags.Duration("shutdown-timeout", 30*time.Second, "maximum wait after forwarding a shutdown signal")
-	if err := flags.Parse(args); err != nil {
+	envFlag := flags.String("env", "", "environment `name` (or PFW_ENV)")
+	envDir := flags.String("env-dir", "", "dotenv directory `path` (default: module root)")
+	grace := flags.Duration("shutdown-timeout", 30*time.Second, "maximum `duration` after forwarding a shutdown signal")
+	var forwarded []string
+	for i, arg := range args {
+		if arg == "--" {
+			forwarded, args = args[i+1:], args[:i]
+			break
+		}
+	}
+	if err := parseCommandFlags("run", flags, args, stdout); err != nil {
 		return err
 	}
 	if *grace <= 0 {
@@ -58,17 +75,19 @@ func runApplication(ctx context.Context, args []string, stdout, stderr io.Writer
 		return err
 	}
 	remaining := flags.Args()
-	pattern := "."
 	var appArgs []string
+	var explicitPatterns []string
 	if len(remaining) > 0 {
-		pattern = remaining[0]
+		explicitPatterns = remaining[:1]
 		appArgs = remaining[1:]
-		if len(appArgs) > 0 && appArgs[0] == "--" {
-			appArgs = appArgs[1:]
-		}
+	}
+	appArgs = append(appArgs, forwarded...)
+	dir, patterns, err := projectPatterns("main", explicitPatterns)
+	if err != nil {
+		return err
 	}
 	prepare, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	entry, err := generate.FindEntry(prepare, "", pattern)
+	entry, err := generate.FindEntry(prepare, dir, patterns[0])
 	if err != nil {
 		stop()
 		return err

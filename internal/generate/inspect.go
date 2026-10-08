@@ -18,6 +18,7 @@ type InitializerReport struct {
 	Name              string           `json:"name"`
 	Environment       string           `json:"environment,omitempty"`
 	Root              string           `json:"root"`
+	AutoBind          bool             `json:"autobind"`
 	WithCleanup       bool             `json:"with_cleanup"`
 	Inputs            []InputReport    `json:"inputs"`
 	Providers         []ProviderReport `json:"providers"`
@@ -90,7 +91,7 @@ func Inspect(ctx context.Context, cfg Config) (Report, error) {
 			if cfg.Environment != "" && init.environment != "" && init.environment != cfg.Environment {
 				continue
 			}
-			r := InitializerReport{Environment: init.environment, Package: analysis.pkg.PkgPath, Name: init.name, Root: typeString(init.root), WithCleanup: init.withCleanup, Inputs: []InputReport{}, Providers: []ProviderReport{}, Modules: []ModuleReport{}, Bindings: []BindingReport{}, ConstructionOrder: []string{}, CleanupOrder: []string{}}
+			r := InitializerReport{AutoBind: init.rootScope.auto, Environment: init.environment, Package: analysis.pkg.PkgPath, Name: init.name, Root: typeString(init.root), WithCleanup: init.withCleanup, Inputs: []InputReport{}, Providers: []ProviderReport{}, Modules: []ModuleReport{}, Bindings: []BindingReport{}, ConstructionOrder: []string{}, CleanupOrder: []string{}}
 			for n, input := range init.graph.Inputs {
 				r.Inputs = append(r.Inputs, InputReport{Name: init.inputNames[n], Type: typeString(input.Type)})
 			}
@@ -153,10 +154,10 @@ func Inspect(ctx context.Context, cfg Config) (Report, error) {
 				for _, scope := range init.modules {
 					if scope.names[p.Name] {
 						item.Modules = append(item.Modules, scope.name)
-						if scope.auto {
-							item.AutoBindScopes = append(item.AutoBindScopes, scope.name)
-						}
 					}
+				}
+				for _, scope := range init.providerAutoScopes[p.Name] {
+					item.AutoBindScopes = append(item.AutoBindScopes, scope.name)
 				}
 				item.Modules = unique(item.Modules)
 				item.AutoBindScopes = unique(item.AutoBindScopes)
@@ -193,10 +194,12 @@ func Inspect(ctx context.Context, cfg Config) (Report, error) {
 					}
 				}
 				if mode == "automatic" {
-					for _, scope := range init.modules {
-						if scope.auto && (consumer == "" || scope.names[consumer]) {
-							b.AutoBindScopes = append(b.AutoBindScopes, scope.name)
-						}
+					scopes := init.providerAutoScopes[consumer]
+					if consumer == "" {
+						scopes = init.rootAutoScopes
+					}
+					for _, scope := range scopes {
+						b.AutoBindScopes = append(b.AutoBindScopes, scope.name)
 					}
 				}
 				b.AutoBindScopes = unique(b.AutoBindScopes)

@@ -10,7 +10,13 @@ import (
 )
 
 var generateCommand = command{
-	usage: "generate [-env name] [-check] [-output pfw_gen.go] [packages...]",
+	usage:       "generate [options] [packages...]",
+	description: "Generate Go dependency wiring",
+	examples: []string{
+		"go tool pfw generate -env dev ./internal/bootstrap",
+		"go tool pfw generate -env dev -check ./internal/bootstrap",
+	},
+	notes: []string{"Packages default to bootstrap in the module root's pfw.toml, or ./internal/bootstrap. Explicit packages override configuration.", "Select -env when the initializer receives pfw.Environment. Only the selected graph is emitted; -check never writes files."},
 	run:   runGenerate,
 }
 
@@ -18,12 +24,16 @@ func runGenerate(ctx context.Context, args []string, stdout, stderr io.Writer) e
 	flags := flag.NewFlagSet("pfw generate", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	check := flags.Bool("check", false, "verify generated files without writing")
-	output := flags.String("output", "pfw_gen.go", "output filename within each template package")
-	env := flags.String("env", "", "environment to generate (required for environment-aware initializers)")
-	if err := flags.Parse(args); err != nil {
+	output := flags.String("output", "pfw_gen.go", "output `file` within each template package")
+	env := flags.String("env", "", "environment `name` (required for environment-aware initializers)")
+	if err := parseCommandFlags("generate", flags, args, stdout); err != nil {
 		return err
 	}
-	paths, err := generate.Run(ctx, generate.Config{Patterns: flags.Args(), Output: *output, Check: *check, Environment: *env})
+	dir, patterns, err := projectPatterns("bootstrap", flags.Args())
+	if err != nil {
+		return err
+	}
+	paths, err := generate.Run(ctx, generate.Config{Dir: dir, Patterns: patterns, Output: *output, Check: *check, Environment: *env})
 	if err != nil {
 		return err
 	}

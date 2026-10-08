@@ -11,5 +11,6 @@ func Initialize(env pfw.Environment) (*application.App, error) {
  return pfw.Build[*application.App](
   pfw.Environments("{{.Environment}}"),
   pfw.Discover("../..."),
+  pfw.AutoBind(),
  )
 }

@@ -6,6 +6,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.4.0
+	github.com/pelletier/go-toml/v2 v2.4.3
 	golang.org/x/mod v0.39.0
 	golang.org/x/term v0.40.0
 	golang.org/x/tools v0.49.0

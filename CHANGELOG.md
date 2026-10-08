@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- `AutoBind` nella radice Build/BuildWithCleanup, ereditarietà nei moduli e
+  override locale con `AutoBind(true/false)`, inclusi gli scope annidati.
+
+- Help CLI strutturato con descrizioni, opzioni, default, esempi e colori su
+  terminale; help per comando con exit code 0 e diagnostica di sintassi concisa.
+
+- Autobinding attivo nei moduli di discovery degli skeleton hello-world e API;
+  i binding manuali sono necessari soltanto per selezionare fra più implementazioni.
+
+- Mapper degli errori iniettato negli handler stdlib ed Echo, con provider
+  annotato e binding sostituibile nei template API.
+
 - Provider framework di fallback per logger e lifecycle HTTP, sostituibili da
   input, provider e binding applicativi senza nascondere errori o ambiguità.
 - Template API senza factory del logger e wrapper lifecycle nell'applicazione;

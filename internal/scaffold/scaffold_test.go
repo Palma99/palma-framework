@@ -84,7 +84,7 @@ func TestPublishedVersionAndBundledFiles(t *testing.T) {
 	if file.Module.Mod.Path != "example.com/app" || file.Require[0].Mod.Version != "v0.1.0" || len(file.Replace) != 0 || len(file.Tool) != 1 {
 		t.Fatalf("go.mod: %s", data)
 	}
-	for _, name := range []string{".gitignore", ".env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/handler.go", "internal/item/infrastructure/memory/store.go"} {
+	for _, name := range []string{"pfw.toml", ".gitignore", ".env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/handler.go", "internal/item/infrastructure/memory/store.go"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -117,6 +117,8 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 		{"api/echo", "api", "echo", "./cmd/api"},
 		{"api/stdlib/custom-logger", "api", "stdlib", "./cmd/api"},
 		{"api/echo/custom-logger", "api", "echo", "./cmd/api"},
+		{"api/stdlib/custom-mapper", "api", "stdlib", "./cmd/api"},
+		{"api/echo/custom-mapper", "api", "echo", "./cmd/api"},
 	} {
 		t.Run(tpl.Name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "project with spaces")
@@ -125,6 +127,9 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 			}
 			if strings.Contains(tpl.Name, "custom-logger") {
 				installCustomLogger(t, dir)
+			}
+			if strings.Contains(tpl.Name, "custom-mapper") {
+				installCustomMapper(t, dir)
 			}
 			data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 			if err != nil {
@@ -150,10 +155,11 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 					t.Fatalf("wrong HTTP variant: %s", handler)
 				}
 			}
+			commandDir := dir
 			goCommand := func(args ...string) string {
 				t.Helper()
 				cmd := exec.Command("go", args...)
-				cmd.Dir = dir
+				cmd.Dir = commandDir
 				cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "PFW_ENV=uat")
 				output, err := cmd.CombinedOutput()
 				if err != nil {
@@ -163,16 +169,63 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 			}
 			goCommand("mod", "tidy")
 			goCommand("generate", "./internal/bootstrap")
-			goCommand("tool", "pfw", "generate", "-env", "uat", "-check", "./internal/bootstrap")
+			commandDir = filepath.Join(dir, "internal", "bootstrap")
+			goCommand("tool", "pfw", "generate", "-env", "uat")
+			goCommand("tool", "pfw", "generate", "-env", "uat", "-check")
+			goCommand("tool", "pfw", "inspect", "-env", "uat", "-json")
+			commandDir = dir
 			goCommand("test", "./...")
 			if tpl.Template == "hello-world" {
-				if output := goCommand("tool", "pfw", "run", "-env", "uat", tpl.Entry); strings.TrimSpace(output) != "Hello, world!" {
+				if output := goCommand("tool", "pfw", "run", "-env", "uat"); strings.TrimSpace(output) != "Hello, world!" {
 					t.Fatalf("hello output: %s", output)
 				}
 			} else {
 				goCommand("build", "-o", "api", "./cmd/api")
 			}
 		})
+	}
+}
+
+func installCustomMapper(t *testing.T, dir string) {
+	t.Helper()
+	compose := filepath.Join(dir, "internal/bootstrap/compose.go")
+	data, err := os.ReadFile(compose)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := strings.Replace(string(data), `"github.com/palma99/palma-framework/transport/httpserver"`, `"github.com/palma99/palma-framework/transport/httpserver"`+"\n"+`pfwhttp "github.com/palma99/palma-framework/http"`+"\n"+`"example.test/starter/internal/platform/custommapper"`, 1)
+	source = strings.Replace(source, `pfw.Discover("../..."),`, `pfw.Discover("../..."), pfw.Bind[pfwhttp.ErrorMapper, *custommapper.Mapper](),`, 1)
+	if err := os.WriteFile(compose, []byte(source), 0644); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"internal/platform/custommapper/mapper.go": `package custommapper
+import("net/http";"sync/atomic";pfwhttp "github.com/palma99/palma-framework/http";itemhttp "example.test/starter/internal/item/infrastructure/http")
+var Calls atomic.Int32
+type Mapper struct{pfwhttp.ErrorMapper}
+//pfw:coconut
+func NewMapper()*Mapper{return &Mapper{ErrorMapper:itemhttp.NewErrorMapper()}}
+func(m *Mapper)Map(err error)*pfwhttp.Error{Calls.Add(1);return m.ErrorMapper.Map(err)}
+func(m *Mapper)Write(w http.ResponseWriter,err error)error{mapped:=m.Map(err);if mapped==nil{return nil};return mapped.Write(w)}
+`,
+		"internal/bootstrap/custom_mapper_test.go": `package bootstrap_test
+import("net/http/httptest";"testing";"example.test/starter/internal/bootstrap";"example.test/starter/internal/config";"example.test/starter/internal/platform/custommapper")
+func TestCustomMapperIsInjected(t *testing.T){
+ custommapper.Calls.Store(0)
+ server,cleanup,err:=bootstrap.Initialize("uat",config.Config{});if err!=nil{t.Fatal(err)};defer cleanup()
+ response:=httptest.NewRecorder();server.HTTPServer().Handler.ServeHTTP(response,httptest.NewRequest("GET","/items/missing",nil))
+ if response.Code!=404||custommapper.Calls.Load()!=1{t.Fatalf("custom mapper was not used: status=%d calls=%d",response.Code,custommapper.Calls.Load())}
+}
+`,
+	}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

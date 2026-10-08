@@ -29,7 +29,10 @@ type initializer struct {
 	cleanupType         types.Type
 	manual              map[string]bool
 	excluded            map[string]bool
-	autoScopes          []map[string]bool
+	rootScope           *registrationScope
+	providerScopes      map[string][]*registrationScope
+	providerAutoScopes  map[string][]*registrationScope
+	rootAutoScopes      []*registrationScope
 	registered          []di.Provider
 	discovered          map[string]bool
 	modules             []*registrationScope
@@ -55,10 +58,14 @@ type frontend struct {
 }
 
 type registrationScope struct {
-	auto   bool
-	names  map[string]bool
-	name   string
-	source string
+	auto        bool
+	setting     *bool
+	conditional bool
+	parent      *registrationScope
+	depth       int
+	names       map[string]bool
+	name        string
+	source      string
 }
 
 func newFrontend(pkg *packages.Package) *frontend {
@@ -164,11 +171,15 @@ func readPackage(pkg *packages.Package, catalog *discovery, environment string, 
 					}
 					init.inputNames = append(init.inputNames, name)
 				}
+				init.rootScope = &registrationScope{names: make(map[string]bool), name: "<root>", source: f.pkg.Fset.Position(fn.Pos()).String()}
+				init.providerScopes = make(map[string][]*registrationScope)
+				f.scopes = []*registrationScope{init.rootScope}
 				for _, arg := range builds[0].Args {
 					if err := f.registration(arg, &init); err != nil {
 						return nil, err
 					}
 				}
+				f.scopes = nil
 				if err := mergeEnvironmentBindings(&init); err != nil {
 					return nil, f.errorAt(fn, "%v", err)
 				}
@@ -184,19 +195,8 @@ func readPackage(pkg *packages.Package, catalog *discovery, environment string, 
 					}
 				}
 				init.graph.Providers = included
-				for _, scope := range init.autoScopes {
-					var names []string
-					for _, p := range included {
-						if scope[p.Name] {
-							names = append(names, p.Name)
-						}
-					}
-					init.graph.RootAutoBind = append(init.graph.RootAutoBind, names...)
-					for n := range init.graph.Providers {
-						if scope[init.graph.Providers[n].Name] {
-							init.graph.Providers[n].AutoBind = append(init.graph.Providers[n].AutoBind, names...)
-						}
-					}
+				if err := configureAutoBinding(&init); err != nil {
+					return nil, f.errorAt(fn, "%v", err)
 				}
 				plan, err := init.graph.Resolve(init.root)
 				if err != nil {
@@ -326,7 +326,8 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 			name = "module@" + source
 		}
 		f.moduleName = ""
-		scope := &registrationScope{names: make(map[string]bool), name: name, source: source}
+		parent := f.scopes[len(f.scopes)-1]
+		scope := &registrationScope{names: make(map[string]bool), name: name, source: source, parent: parent, depth: parent.depth + 1}
 		f.scopes = append(f.scopes, scope)
 		defer func() { f.scopes = f.scopes[:len(f.scopes)-1] }()
 		for _, arg := range call.Args {
@@ -334,15 +335,9 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 				return err
 			}
 		}
-		if scope.auto {
-			init.autoScopes = append(init.autoScopes, scope.names)
-		}
 		init.modules = append(init.modules, scope)
 	case "AutoBind":
-		if len(f.scopes) == 0 || len(call.Args) != 0 {
-			return f.errorAt(call, "pfw.AutoBind() must be declared inside pfw.Module")
-		}
-		f.scopes[len(f.scopes)-1].auto = true
+		return f.setAutoBinding(call)
 	default:
 		return f.errorAt(expr, "expected pfw.Constructors, pfw.Discover, pfw.Exclude, pfw.Implementation, pfw.Bind or pfw.Module; external modules and dynamic registrations are unsupported")
 	}
@@ -364,6 +359,11 @@ func (f *frontend) addConstructor(fn *types.Func, node ast.Node, init *initializ
 	name := fn.Pkg().Path() + "." + fn.Name()
 	for _, scope := range f.scopes {
 		scope.names[name] = true
+	}
+	if len(f.scopes) > 0 {
+		init.providerScopes[name] = append(init.providerScopes[name], f.scopes[len(f.scopes)-1])
+	} else if init.rootScope != nil {
+		init.providerScopes[name] = append(init.providerScopes[name], init.rootScope)
 	}
 	init.manual[name] = init.manual[name] || manual
 	init.discovered[name] = init.discovered[name] || !manual

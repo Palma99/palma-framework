@@ -7,40 +7,72 @@ import (
  "{{.Module}}/internal/item/application"
 )
 
-type Handler struct { service *application.Service; errors *pfwhttp.Mapper; logger logging.Logger }
+type Handler struct {
+  service *application.Service;
+  errors pfwhttp.ErrorMapper;
+  logger logging.Logger;
+}
 
 //pfw:coconut
-func NewHandler(service *application.Service, logger logging.Logger) *Handler {
- return &Handler{service: service, errors: newErrorMapper(), logger: logger}
+func NewHandler(
+  service *application.Service,
+  errors pfwhttp.ErrorMapper,
+  logger logging.Logger,
+) *Handler {
+  return &Handler{
+    service: service,
+    errors: errors,
+    logger: logger,
+  }
 }
 
 func (h *Handler) Register(router *echo.Echo) {
- router.GET("/items", h.list)
- router.GET("/items/:id", h.get)
- router.POST("/items", h.create)
+  router.GET("/items", h.list)
+  router.GET("/items/:id", h.get)
+  router.POST("/items", h.create)
 }
 
 func (h *Handler) fail(ctx *echo.Context, err error) error {
- mapped := h.errors.Map(err)
- if mapped.Status >= 500 { h.logger.Error(ctx.Request().Context(), "request failed", "error", err) }
- return mapped.Write(ctx.Response())
+  mapped := h.errors.Map(err)
+  if mapped.Status >= 500 {
+    h.logger.Error(ctx.Request().Context(), "request failed", "error", err)
+  }
+  return mapped.Write(ctx.Response())
 }
+
 func (h *Handler) list(ctx *echo.Context) error {
- items, err := h.service.List(ctx.Request().Context())
- if err != nil { return h.fail(ctx, err) }
- result := make([]itemResponse, 0, len(items))
- for _, item := range items { result = append(result, response(item)) }
- return pfwhttp.OK(result).Write(ctx.Response())
+  items, err := h.service.List(ctx.Request().Context())
+  if err != nil {
+    return h.fail(ctx, err)
+  }
+
+  result := make([]itemResponse, 0, len(items))
+  for _, item := range items {
+    result = append(result, response(item))
+  }
+
+  return pfwhttp.OK(result).Write(ctx.Response())
 }
+
 func (h *Handler) get(ctx *echo.Context) error {
- item, err := h.service.Get(ctx.Request().Context(), ctx.Param("id"))
- if err != nil { return h.fail(ctx, err) }
- return pfwhttp.OK(response(item)).Write(ctx.Response())
+  item, err := h.service.Get(ctx.Request().Context(), ctx.Param("id"))
+  if err != nil {
+    return h.fail(ctx, err)
+  }
+
+  return pfwhttp.OK(response(item)).Write(ctx.Response())
 }
+
 func (h *Handler) create(ctx *echo.Context) error {
- input, err := pfwhttp.DecodeJSON[struct { Name string `json:"name"` }](ctx.Request(), pfwhttp.DecodeOptions{})
- if err != nil { return h.fail(ctx, err) }
- item, err := h.service.Create(ctx.Request().Context(), input.Name)
- if err != nil { return h.fail(ctx, err) }
- return pfwhttp.Created("/items/"+item.ID, response(item)).Write(ctx.Response())
+  input, err := pfwhttp.DecodeJSON[struct { Name string `json:"name"` }](ctx.Request(), pfwhttp.DecodeOptions{})
+  if err != nil { 
+    return h.fail(ctx, err)
+  }
+
+  item, err := h.service.Create(ctx.Request().Context(), input.Name)
+  if err != nil {
+    return h.fail(ctx, err)
+  }
+
+  return pfwhttp.Created("/items/"+item.ID, response(item)).Write(ctx.Response())
 }

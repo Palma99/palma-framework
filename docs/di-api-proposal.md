@@ -82,7 +82,7 @@ Il tag è un meccanismo di compilazione, non una convenzione architetturale.
 | `Constructors(f, g, ...)` | Registra i costruttori indicati tramite simboli Go. |
 | `Discover(patterns...)` | Registra le funzioni annotate `//pfw:coconut` nei package selezionati. |
 | `Exclude(f, g, ...)` | Esclude funzioni dalla discovery; mantiene le registrazioni manuali. |
-| `AutoBind()` | Abilita il binding automatico nel modulo che lo contiene. |
+| `AutoBind([bool])` | Configura il binding automatico nella radice o nel modulo; senza argomento equivale a `true`. |
 | `Implementation[Interface, Concrete]()` | Seleziona esplicitamente l'implementazione dell'interfaccia. |
 | `Bind[Interface, Concrete]()` | Alias di `Implementation`, con lo stesso ordine dei tipi. |
 | `Module(...)` | Raggruppa registrazioni riutilizzabili, anche annidate. |
@@ -174,7 +174,7 @@ altrimenti va esportata. Restano validi i vincoli degli import Go e di `internal
 Una stessa funzione viene registrata una sola volta, anche se selezionata da
 pattern sovrapposti o dichiarata anche manualmente. Funzioni diverse che
 forniscono lo stesso tipo rimangono ambigue. L'autobinding delle interfacce
-è disabilitato di default e si abilita esplicitamente per modulo.
+è disabilitato di default e si abilita nella composizione radice o nei moduli.
 
 ### Binding automatico delle interfacce
 
@@ -185,17 +185,37 @@ var Users = pfw.Module(
 )
 ```
 
-`AutoBind()` è ammesso soltanto dentro `Module`. Vale per i suoi provider,
-inclusi i moduli annidati; abilitarlo in un modulo figlio non lo abilita nel
-padre o nei moduli fratelli. La posizione del marker fra gli argomenti non conta.
+`AutoBind()` è ammesso direttamente in `Build` e `BuildWithCleanup`, oltre che
+nei moduli. `AutoBind()` e `AutoBind(true)` abilitano l'inferenza;
+`AutoBind(false)` la disabilita. Il valore deve essere un booleano costante.
+Un modulo senza impostazione esplicita eredita quella del suo contenitore,
+fino alla radice. L'impostazione più vicina prevale e la posizione dei marker
+fra gli argomenti non conta.
+
+```go
+return pfw.Build[*Application](
+    pfw.AutoBind(), // globale
+    pfw.Discover("../common/..."),
+    pfw.Module(
+        pfw.AutoBind(false), // binding espliciti in questo modulo
+        pfw.Discover("../special/..."),
+    ),
+)
+```
+
+Quando un modulo eredita il globale, usa i candidati della radice. Un modulo
+con una propria impostazione positiva definisce invece uno scope locale, con
+candidati nel modulo e nei suoi discendenti. I figli ereditano questo scope
+finché non dichiarano un'altra impostazione. Impostazioni contraddittorie allo
+stesso livello producono un errore; dichiarazioni identiche sono deduplicate.
 
 Per ogni interfaccia richiesta da una dipendenza o dalla radice:
 
 1. Se esiste `Implementation` o `Bind`, si usa il tipo concreto specificato.
 2. Se un input o costruttore fornisce già esattamente l'interfaccia, si usa quel valore.
-3. Se il costruttore appartiene a un modulo con `AutoBind`, si cercano candidati
-   concreti soltanto fra i provider di quel modulo e dei suoi discendenti.
-   Senza opt-in si richiede un binding manuale.
+3. Se l'impostazione effettiva del costruttore abilita `AutoBind`, si cercano
+   candidati concreti nello scope che ha definito l'impostazione. Quando è
+   disabilitata si richiede un binding manuale.
 4. Un solo candidato viene selezionato; più candidati producono un errore con
    l'elenco e la richiesta di un binding manuale; nessuno produce una dipendenza mancante.
 
@@ -209,10 +229,14 @@ istanza scelta, anche quando richiesta attraverso più interfacce.
 Due moduli con `AutoBind` possono scegliere tipi diversi per la stessa
 interfaccia: il piano conserva le scelte per costruttore. I provider esterni al
 modulo non introducono candidati impliciti. Un costruttore condiviso fra più
-moduli mantiene una sola istanza; se appartiene a più scope automatici, i loro
-candidati vengono riuniti e le ambiguità richiedono un binding esplicito.
-Per una radice di tipo interfaccia si considerano i provider dei moduli che
-hanno abilitato `AutoBind`; più candidati richiedono un binding manuale.
+moduli mantiene una sola istanza. Per registrazioni sovrapposte, l'impostazione
+esplicita più locale prevale su quella globale; scope altrettanto specifici
+con valori opposti sono un errore. Più scope positivi di uguale specificità
+riuniscono i candidati, mantenendo il controllo delle ambiguità.
+Per una radice di tipo interfaccia, un'impostazione globale esplicita controlla
+l'inferenza della radice. In assenza di impostazione globale, resta valido il
+comportamento precedente: si considerano i provider dei moduli con `AutoBind`.
+Più candidati richiedono un binding manuale.
 Gli input esterni concreti non appartengono ai moduli: per convertirli in
 interfacce serve `Bind`/`Implementation`, oppure un parametro già tipizzato
 come interfaccia. I binding espliciti valgono per l'intera composizione e

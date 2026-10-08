@@ -23,7 +23,9 @@ func currentVersion() string {
 }
 
 var versionCommand = command{
-	usage: "version",
+	usage:       "version",
+	description: "Show the installed CLI version",
+	examples:    []string{"pfw version", "go tool pfw version"},
 	run: func(_ context.Context, args []string, stdout, _ io.Writer) error {
 		if len(args) != 0 {
 			return fmt.Errorf("usage: pfw version")

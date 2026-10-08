@@ -4,7 +4,7 @@ Minimal Palma application. Requires Go 1.26 or newer.
 
 ```sh
 go mod tidy
-go tool pfw run -env {{.Environment}} ./cmd/app
+go tool pfw run -env {{.Environment}}
 ```
 
 To generate wiring and build separately:
@@ -23,6 +23,12 @@ a published framework version to share the project independently.
 `compose.go` declares supported environments and uses `pfw.Discover("../...")`
 to discover providers in `internal`. Mark new dependency constructors with
 `//pfw:coconut`, as shown by `application.NewApp`; no constructor list is needed.
-Add your own
-names to `pfw.Environments(...)`. Generate again for each selected environment
+`pfw.AutoBind()` is enabled at the build root: a single compatible provider
+is selected automatically for an interface. Use `pfw.Bind` when there are several
+compatible implementations. Modules inherit the root setting unless they declare
+`pfw.AutoBind()` or `pfw.AutoBind(false)`. Add your own names to `pfw.Environments(...)`. Generate again for each selected environment
 before building; the binary rejects an environment different from its wiring.
+
+`pfw.toml` configures the bootstrap and main package paths, relative to the module
+root. `go tool pfw generate`, `inspect` and `run` use these paths when no package
+is supplied; explicit package arguments override them.
