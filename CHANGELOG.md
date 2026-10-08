@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Provider framework di fallback per logger e lifecycle HTTP, sostituibili da
+  input, provider e binding applicativi senza nascondere errori o ambiguità.
+- Template API senza factory del logger e wrapper lifecycle nell'applicazione;
+  il main riporta gli errori di bootstrap su stderr senza costruire un altro logger.
+
 - Interfaccia `logging.Logger` sostituibile tramite DI e implementazione standard
   basata su `log/slog`, con livelli, contesto e campi strutturati.
 - Logger iniettato negli skeleton API per readiness, errori HTTP e lifecycle.

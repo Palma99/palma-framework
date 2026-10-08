@@ -4,18 +4,16 @@ package bootstrap
 
 import (
  pfw "github.com/palma99/palma-framework"
- "github.com/palma99/palma-framework/logging"
  "{{.Module}}/internal/config"
  "{{.Module}}/internal/item/infrastructure/memory"
  "{{.Module}}/internal/item/application"
- apihttp "{{.Module}}/internal/platform/http"
+ "github.com/palma99/palma-framework/transport/httpserver"
 )
 
-func Initialize(env pfw.Environment, cfg config.Config) (*apihttp.LifecycleServer, func() error, error) {
- return pfw.BuildWithCleanup[*apihttp.LifecycleServer](
+func Initialize(env pfw.Environment, cfg config.Config) (*httpserver.Server, func() error, error) {
+ return pfw.BuildWithCleanup[*httpserver.Server](
   pfw.Environments("{{.Environment}}"),
   pfw.Discover("../..."),
   pfw.Bind[application.Repository, *memory.Store](),
-  pfw.Bind[logging.Logger, *logging.SlogLogger](),
  )
 }

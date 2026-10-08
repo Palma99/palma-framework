@@ -31,7 +31,6 @@ The memory implementation is usable immediately. Data is lost on restart. Implem
 - `internal/item/infrastructure/memory`: concurrency-safe storage infrastructure.
 - `internal/config`: typed configuration with validation and dotenv loading.
 - `internal/platform/http`: router and server configuration.
-- `internal/platform/logging`: annotated provider for the framework's default logger.
 - `internal/bootstrap`: composition root and generated dependency wiring.
 - `cmd/api`: startup and graceful shutdown through the Palma lifecycle.
 
@@ -45,17 +44,20 @@ Domain factories and other helpers do not need annotations.
 
 The server logs `server started` with the bound address and environment after
 successfully opening its listener. Startup errors do not emit a readiness log.
-The same lifecycle wrapper is used with both stdlib and Echo routers.
+The framework HTTP lifecycle component is used with both stdlib and Echo routers.
 
 HTTP handlers and the lifecycle component receive `logging.Logger` through DI.
-The default binding is `pfw.Bind[logging.Logger, *logging.SlogLogger]()` and writes
-structured text events to stderr at info level. Configure its options in
-`internal/platform/logging/logger.go`, or add an annotated constructor for your
-own implementation and replace the binding. `pfw.ForEnv` can select another
-logger for a specific declared environment.
+Palma supplies the standard logger and HTTP lifecycle component as fallback
+providers. There is no application logger factory or lifecycle wrapper to maintain.
 
-The main uses a standard logger for failures before DI completes, then switches
-to the graph's logger for lifecycle failures. The logger does not exit the process.
+To customize the standard logger, add an annotated constructor returning
+`*logging.SlogLogger`. To choose a different implementation, add its annotated
+constructor and `pfw.Bind[logging.Logger, *custom.Logger]()` to the composition.
+An initializer input or a provider returning `logging.Logger` directly also
+replaces the fallback. `pfw.ForEnv` can select a logger for a declared environment.
+Application ambiguities and missing explicitly bound providers remain errors.
+
+The main reports bootstrap errors on stderr and does not create another logger.
 
 ```sh
 go generate ./internal/bootstrap

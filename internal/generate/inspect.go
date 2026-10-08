@@ -43,6 +43,7 @@ type ProviderReport struct {
 	Fallible           bool     `json:"fallible"`
 	Cleanup            bool     `json:"cleanup"`
 	Override           bool     `json:"override,omitempty"`
+	Fallback           bool     `json:"fallback,omitempty"`
 }
 type ModuleReport struct {
 	Name      string   `json:"name"`
@@ -136,6 +137,10 @@ func Inspect(ctx context.Context, cfg Config) (Report, error) {
 				}
 				item := ProviderReport{Name: p.Name, Output: typeString(p.Output), Dependencies: []string{}, Origins: []string{}, Modules: []string{}, AutoBindScopes: []string{}, Source: analysis.pkg.Fset.Position(ctor.fn.Pos()).String(), Status: status, ExclusionRequested: init.excluded[p.Name], Fallible: ctor.fallible, Cleanup: ctor.cleanup}
 				item.Override = init.overrides[p.Name]
+				item.Fallback = init.framework[p.Name]
+				if item.Fallback {
+					item.Origins = append(item.Origins, "framework_default")
+				}
 				if init.manual[p.Name] {
 					item.Origins = append(item.Origins, "manual")
 				}

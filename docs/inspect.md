@@ -28,6 +28,8 @@ Il report distingue ogni initializer e mostra:
 - Costruttori registrati, output, dipendenze, file sorgente quando disponibile.
 - Provenienza `manual` e/o `coconut`, moduli e scope di `AutoBind`.
 - Stato `used`, `unused` o `excluded` dei provider candidati.
+- Provenienza `framework_default` e campo JSON `fallback` per i provider standard
+  usati quando mancano registrazioni applicative.
 - Binding manuali, automatici e `direct` (input/provider già tipizzato con
   l'interfaccia), con consumer e provider selezionato.
 - Ordine di costruzione effettivo e ordine inverso dei cleanup raggiungibili.

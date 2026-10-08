@@ -183,8 +183,8 @@ func installCustomLogger(t *testing.T, dir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := strings.Replace(string(data), `"github.com/palma99/palma-framework/logging"`, `"github.com/palma99/palma-framework/logging"`+"\n"+`"example.test/starter/internal/platform/customlogger"`, 1)
-	source = strings.Replace(source, "pfw.Bind[logging.Logger, *logging.SlogLogger]()", "pfw.Bind[logging.Logger, *customlogger.Logger]()", 1)
+	source := strings.Replace(string(data), `"github.com/palma99/palma-framework/transport/httpserver"`, `"github.com/palma99/palma-framework/transport/httpserver"`+"\n"+`"github.com/palma99/palma-framework/logging"`+"\n"+`"example.test/starter/internal/platform/customlogger"`, 1)
+	source = strings.Replace(source, `pfw.Discover("../..."),`, `pfw.Discover("../..."), pfw.Bind[logging.Logger, *customlogger.Logger](),`, 1)
 	if err := os.WriteFile(compose, []byte(source), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -204,13 +204,13 @@ import("context";"net/http/httptest";"testing";"time";"example.test/starter/inte
 func TestLoggerBindingReplacesDefault(t *testing.T){
  server,cleanup,err:=bootstrap.Initialize("uat",config.Config{HTTP:config.HTTPConfig{Address:"127.0.0.1:0",ReadHeaderTimeout:time.Second,ShutdownTimeout:time.Second}})
  if err!=nil{t.Fatal(err)};defer cleanup()
- logger,ok:=server.Logger.(*customlogger.Logger);if !ok{t.Fatalf("logger: %T",server.Logger)}
+ logger,ok:=server.Logger().(*customlogger.Logger);if !ok{t.Fatalf("logger: %T",server.Logger())}
  if err:=server.Start(context.Background());err!=nil{t.Fatal(err)}
  t.Cleanup(func(){ctx,cancel:=context.WithTimeout(context.Background(),time.Second);defer cancel();if err:=server.Stop(ctx);err!=nil{t.Error(err)};if err:=server.Wait();err!=nil{t.Error(err)}})
  if logger.Counts.Info.Load()!=1{t.Fatal("readiness did not use custom logger")}
  ctx,cancel:=context.WithCancel(context.Background());cancel()
  request:=httptest.NewRequest("GET","/items",nil).WithContext(ctx)
- response:=httptest.NewRecorder();server.HTTP.Handler.ServeHTTP(response,request)
+ response:=httptest.NewRecorder();server.HTTPServer().Handler.ServeHTTP(response,request)
  if response.Code!=500||logger.Counts.Error.Load()!=1{t.Fatalf("HTTP did not use same custom logger: status=%d errors=%d",response.Code,logger.Counts.Error.Load())}
 }
 `,

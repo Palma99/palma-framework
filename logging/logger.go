@@ -34,6 +34,10 @@ type SlogLogger struct{ logger *slog.Logger }
 
 var _ Logger = (*SlogLogger)(nil)
 
+// NewDefault is the framework's fallback provider. Each DI initialization owns
+// its own instance; this is not a global logger.
+func NewDefault() *SlogLogger { return New(Options{}) }
+
 // New creates an independent logger; it never modifies slog's global default.
 func New(options Options) *SlogLogger {
 	output := options.Output

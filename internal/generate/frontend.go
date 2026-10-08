@@ -38,6 +38,7 @@ type initializer struct {
 	environmentIndex    int
 	environmentBindings []di.Binding
 	overrides           map[string]bool
+	framework           map[string]bool
 }
 
 type frontend struct {
@@ -170,6 +171,9 @@ func readPackage(pkg *packages.Package, catalog *discovery, environment string, 
 				}
 				if err := mergeEnvironmentBindings(&init); err != nil {
 					return nil, f.errorAt(fn, "%v", err)
+				}
+				if err := f.addFrameworkProviders(&init, fn); err != nil {
+					return nil, err
 				}
 				var included []di.Provider
 				init.registered = append([]di.Provider(nil), init.graph.Providers...)

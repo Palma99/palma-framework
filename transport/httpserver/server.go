@@ -9,27 +9,62 @@ import (
 	"net"
 	"net/http"
 	"sync"
+
+	pfw "github.com/palma99/palma-framework"
+	"github.com/palma99/palma-framework/logging"
 )
 
 type Server struct {
-	server   *http.Server
-	mu       sync.Mutex
-	listener net.Listener
-	started  bool
-	stopped  bool
-	done     chan struct{}
-	serveErr error
-	stopOnce sync.Once
-	stopErr  error
+	server      *http.Server
+	mu          sync.Mutex
+	listener    net.Listener
+	started     bool
+	stopped     bool
+	done        chan struct{}
+	serveErr    error
+	stopOnce    sync.Once
+	stopErr     error
+	logger      logging.Logger
+	environment pfw.Environment
 }
 
-func New(server *http.Server) *Server { return &Server{server: server, done: make(chan struct{})} }
+func New(server *http.Server) *Server { return NewWithLogger(server, logging.NewDefault()) }
+
+// NewWithLogger is the default DI provider for initializers without an environment.
+func NewWithLogger(server *http.Server, logger logging.Logger) *Server {
+	return &Server{server: server, logger: logger, done: make(chan struct{})}
+}
+
+// NewForEnvironment is the default DI provider for environment-aware initializers.
+func NewForEnvironment(server *http.Server, logger logging.Logger, env pfw.Environment) *Server {
+	s := NewWithLogger(server, logger)
+	s.environment = env
+	return s
+}
+
+// Logger returns the logger injected into this lifecycle component.
+func (s *Server) Logger() logging.Logger { return s.logger }
+
+// HTTPServer returns the underlying application's HTTP server.
+func (s *Server) HTTPServer() *http.Server { return s.server }
 
 // Start binds the listener before returning, so bind failures are startup errors.
 func (s *Server) Start(ctx context.Context) error {
+	if err := s.start(ctx); err != nil {
+		return err
+	}
+	fields := []any{"address", s.Addr().String()}
+	if s.environment != "" {
+		fields = append(fields, "environment", s.environment)
+	}
+	s.logger.Info(ctx, "server started", fields...)
+	return nil
+}
+
+func (s *Server) start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.server == nil || s.started || s.stopped {
+	if s.server == nil || s.logger == nil || s.started || s.stopped {
 		return fmt.Errorf("httpserver: server is nil or has already started/stopped")
 	}
 	if err := ctx.Err(); err != nil {
@@ -54,6 +89,7 @@ func (s *Server) Start(ctx context.Context) error {
 		s.mu.Unlock()
 		close(s.done)
 	}()
+
 	return nil
 }
 

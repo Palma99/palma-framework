@@ -19,6 +19,8 @@ type Provider struct {
 	// Empty means automatic interface binding is disabled.
 	AutoBind []string
 	Override bool
+	// Fallback providers are shadowed by application inputs/providers of the same type.
+	Fallback bool
 }
 
 // Binding explicitly selects a concrete type for an interface dependency.
@@ -39,6 +41,8 @@ type Graph struct {
 	Bindings     []Binding
 	Inputs       []Input
 	RootAutoBind []string
+	// FallbackBindings are used only after application bindings and autobinding.
+	FallbackBindings []Binding
 }
 
 // Selection records an interface choice for a particular constructor or root.
@@ -64,6 +68,14 @@ func (g Graph) Resolve(roots ...types.Type) (Plan, error) {
 	var active []Provider
 	for _, p := range g.Providers {
 		shadowed := false
+		if p.Fallback {
+			for _, input := range g.Inputs {
+				shadowed = shadowed || types.Identical(input.Type, p.Output)
+			}
+			for _, other := range g.Providers {
+				shadowed = shadowed || (!other.Fallback && types.Identical(other.Output, p.Output))
+			}
+		}
 		for _, other := range g.Providers {
 			if other.Override && !p.Override && p.Output != nil && other.Output != nil && types.Identical(p.Output, other.Output) {
 				shadowed = true
@@ -86,6 +98,9 @@ func (g Graph) Resolve(roots ...types.Type) (Plan, error) {
 		for _, p := range g.Providers {
 			if p.Name == consumer {
 				eligible = p.AutoBind
+				if p.Fallback && len(eligible) == 0 {
+					eligible = g.RootAutoBind
+				}
 				break
 			}
 		}
@@ -270,6 +285,11 @@ func (g Graph) dependencyType(t types.Type, eligible []string) (types.Type, erro
 	}
 	if selected != nil {
 		return selected, nil
+	}
+	for _, binding := range g.FallbackBindings {
+		if types.Identical(t, binding.Interface) {
+			return binding.Concrete, nil
+		}
 	}
 	return t, nil
 }

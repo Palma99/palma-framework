@@ -19,7 +19,7 @@ func TestAPI(t *testing.T) {
   r := httptest.NewRequest(method, path, strings.NewReader(body))
   r.Header.Set("Content-Type", "application/json")
   w := httptest.NewRecorder()
-  server.HTTP.Handler.ServeHTTP(w, r)
+  server.HTTPServer().Handler.ServeHTTP(w, r)
   return w
  }
  if w := request("GET", "/health", ""); w.Code != http.StatusOK { t.Fatalf("health: %d", w.Code) }

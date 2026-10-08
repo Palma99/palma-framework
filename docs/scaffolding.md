@@ -114,7 +114,6 @@ internal/
   bootstrap/                 composizione DI e wiring generato
   config/                    configurazione tipizzata e validazione
   platform/http/             router e server
-  platform/logging/          provider del logger standard sostituibile
   item/
     domain/                  entità e invarianti
     application/             casi d'uso e porta Repository
@@ -141,14 +140,15 @@ annotare il suo costruttore, senza mantenere una lista `pfw.Constructors`.
 I binding delle interfacce rimangono espliciti, come quello di `Repository`.
 Le factory di dominio e gli helper che non sono provider DI non sono annotati.
 
-L'API genera un componente lifecycle comune ai due router. Dopo il bind della
+L'API usa il componente lifecycle HTTP fornito dal framework per entrambi i router. Dopo il bind della
 porta scrive `server started address=<indirizzo> environment=<nome>`, mostrando
 l'indirizzo effettivamente assegnato anche con porta `0`. Se il bind fallisce,
 l'avvio restituisce l'errore senza stampare un log di readiness. I test generati
 verificano sia la raggiungibilità del server dopo il log sia l'assenza del log
 quando la porta è occupata.
 
-Handler e componente lifecycle ricevono `logging.Logger` tramite DI. Il provider
-annotato in `internal/platform/logging` crea il logger standard; il binding nella
-composizione può essere sostituito con un'implementazione applicativa. La
-[guida logging](logging.md) descrive interfaccia, opzioni e override per ambiente.
+Handler e componente lifecycle ricevono `logging.Logger` tramite DI. Il generatore
+fornisce il logger standard e il componente HTTP come fallback: non vengono
+creati file applicativi per questi provider. Per personalizzare il comportamento,
+registrare provider applicativi e gli eventuali binding, anche attraverso `ForEnv`.
+La [guida logging](logging.md) descrive le precedenze e le opzioni.
