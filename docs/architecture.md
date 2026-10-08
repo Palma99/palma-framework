@@ -49,8 +49,8 @@ automaticamente `go generate` durante la compilazione.
    radici. Una singola istanza per provider e per inizializzazione.
 4. **Emitter:** genera il composition root, propaga gli errori dei costruttori
    e gestisce il cleanup inverso delle risorse tramite `BuildWithCleanup`.
-5. **CLI:** espone generazione e verifica del codice aggiornato; l'ispezione
-   del grafo è ancora da implementare.
+5. **CLI:** espone generazione, verifica del codice aggiornato e ispezione del
+   grafo in formato testuale/JSON, riutilizzando l'analisi del generatore.
 
 `internal/di` implementa il resolver. `internal/generate` carica i template
 con registrazioni esplicite, costruisce il grafo ed emette il wiring.

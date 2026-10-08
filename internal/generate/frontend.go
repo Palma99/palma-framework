@@ -30,6 +30,10 @@ type initializer struct {
 	manual       map[string]bool
 	excluded     map[string]bool
 	autoScopes   []map[string]bool
+	registered   []di.Provider
+	discovered   map[string]bool
+	modules      []*registrationScope
+	inputNames   []string
 }
 
 type frontend struct {
@@ -40,11 +44,14 @@ type frontend struct {
 	allowedUses map[*ast.Ident]bool
 	discovery   *discovery
 	scopes      []*registrationScope
+	moduleName  string
 }
 
 type registrationScope struct {
-	auto  bool
-	names map[string]bool
+	auto   bool
+	names  map[string]bool
+	name   string
+	source string
 }
 
 func newFrontend(pkg *packages.Package) *frontend {
@@ -106,7 +113,7 @@ func readPackage(pkg *packages.Package, catalog *discovery) ([]initializer, erro
 			if sig.Recv() != nil || sig.TypeParams().Len() != 0 || sig.Variadic() || sig.Results().Len() != resultCount || !isError(sig.Results().At(resultCount-1).Type()) || (withCleanup && !isCleanup(sig.Results().At(1).Type())) {
 				return nil, f.errorAt(fn, "initializer must be non-generic and return (T, error) for Build or (T, func() error, error) for BuildWithCleanup")
 			}
-			init := initializer{name: fn.Name.Name, root: sig.Results().At(0).Type(), constructors: make(map[string]constructor), withCleanup: withCleanup, manual: make(map[string]bool), excluded: make(map[string]bool)}
+			init := initializer{name: fn.Name.Name, root: sig.Results().At(0).Type(), constructors: make(map[string]constructor), withCleanup: withCleanup, manual: make(map[string]bool), excluded: make(map[string]bool), discovered: make(map[string]bool)}
 			if withCleanup {
 				init.cleanupType = sig.Results().At(1).Type()
 			}
@@ -117,6 +124,11 @@ func readPackage(pkg *packages.Package, catalog *discovery) ([]initializer, erro
 			}
 			for i := 0; i < sig.Params().Len(); i++ {
 				init.graph.Inputs = append(init.graph.Inputs, di.Input{Name: fmt.Sprintf("input%d", i), Type: sig.Params().At(i).Type()})
+				name := sig.Params().At(i).Name()
+				if name == "" || name == "_" {
+					name = fmt.Sprintf("input%d", i)
+				}
+				init.inputNames = append(init.inputNames, name)
 			}
 			for _, arg := range builds[0].Args {
 				if err := f.registration(arg, &init); err != nil {
@@ -124,6 +136,7 @@ func readPackage(pkg *packages.Package, catalog *discovery) ([]initializer, erro
 				}
 			}
 			var included []di.Provider
+			init.registered = append([]di.Provider(nil), init.graph.Providers...)
 			for _, provider := range init.graph.Providers {
 				if init.manual[provider.Name] || !init.excluded[provider.Name] {
 					included = append(included, provider)
@@ -187,6 +200,9 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 		f.allowedUses[id] = true
 		f.active[obj] = true
 		defer delete(f.active, obj)
+		previous := f.moduleName
+		f.moduleName = id.Name
+		defer func() { f.moduleName = previous }()
 		return f.registration(value, init)
 	}
 	call, ok := expr.(*ast.CallExpr)
@@ -221,7 +237,13 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 		}
 		init.graph.Bindings = append(init.graph.Bindings, di.Binding{Interface: f.pkg.TypesInfo.TypeOf(idx.Indices[0]), Concrete: f.pkg.TypesInfo.TypeOf(idx.Indices[1])})
 	case "Module":
-		scope := &registrationScope{names: make(map[string]bool)}
+		source := f.pkg.Fset.Position(call.Pos()).String()
+		name := f.moduleName
+		if name == "" {
+			name = "module@" + source
+		}
+		f.moduleName = ""
+		scope := &registrationScope{names: make(map[string]bool), name: name, source: source}
 		f.scopes = append(f.scopes, scope)
 		defer func() { f.scopes = f.scopes[:len(f.scopes)-1] }()
 		for _, arg := range call.Args {
@@ -232,6 +254,7 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 		if scope.auto {
 			init.autoScopes = append(init.autoScopes, scope.names)
 		}
+		init.modules = append(init.modules, scope)
 	case "AutoBind":
 		if len(f.scopes) == 0 || len(call.Args) != 0 {
 			return f.errorAt(call, "pfw.AutoBind() must be declared inside pfw.Module")
@@ -260,6 +283,7 @@ func (f *frontend) addConstructor(fn *types.Func, node ast.Node, init *initializ
 		scope.names[name] = true
 	}
 	init.manual[name] = init.manual[name] || manual
+	init.discovered[name] = init.discovered[name] || !manual
 	if _, exists := init.constructors[name]; exists {
 		return nil
 	}

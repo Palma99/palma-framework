@@ -71,3 +71,12 @@ La [configurazione](docs/configuration.md) carica environment e file `.env` in s
 default, campi richiesti, parsing tipizzato e validazione. L'esempio HTTP usa
 il prefisso `HTTPAPI_` per indirizzo, timeout e utente iniziale.
 Le impostazioni possono essere raggruppate in sottostruct tramite `envPrefix`.
+
+`pfw inspect` mostra provider, provenienza, scope, binding, ordine di costruzione
+e cleanup senza scrivere file. Supporta output testuale e `-json`:
+
+```sh
+go run ./cmd/pfw inspect ./examples/httpapi/internal/bootstrap
+```
+
+La [guida inspect](docs/inspect.md) descrive il report e l'uso in tooling.

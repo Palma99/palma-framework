@@ -44,6 +44,7 @@ Dalla root del repository:
 ```sh
 go run ./cmd/pfw generate ./examples/httpapi/internal/bootstrap
 go run ./cmd/pfw generate -check ./examples/httpapi/internal/bootstrap
+go run ./cmd/pfw inspect ./examples/httpapi/internal/bootstrap
 go test -race ./examples/httpapi/...
 go run ./examples/httpapi/cmd/api
 ```
