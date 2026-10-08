@@ -135,3 +135,10 @@ binding specifici e wiring generato per un ambiente alla volta:
 go run ./cmd/pfw run -env local ./examples/httpapi/cmd/api
 go run ./cmd/pfw inspect -env production ./examples/httpapi/internal/bootstrap
 ```
+
+## Transazioni applicative
+
+`transaction.Runner.Within` coordina operazioni applicative tramite un context
+condiviso. L’integrazione `transaction/sql` permette a più repository di usare
+la stessa transazione SQL, con commit, rollback e annidamento controllati.
+Vedi la [guida alle transazioni](docs/transactions.md).

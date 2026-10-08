@@ -9,6 +9,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/user/domain"
+	sqltx "github.com/palma99/palma-framework/transaction/sql"
 )
 
 type connectionError struct {
@@ -39,7 +40,11 @@ type Store struct{ db *sql.DB }
 func NewPostgresStore(db *sql.DB) *Store { return &Store{db: db} }
 
 func (s *Store) List(ctx context.Context) ([]domain.User, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id::text, name FROM pfw_users ORDER BY id")
+	db, err := sqltx.Executor(ctx, s.db)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.QueryContext(ctx, "SELECT id::text, name FROM pfw_users ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +65,11 @@ func (s *Store) Get(ctx context.Context, id string) (domain.User, error) {
 	if err != nil || key <= 0 {
 		return user, domain.ErrNotFound
 	}
-	err = s.db.QueryRowContext(ctx, "SELECT id::text, name FROM pfw_users WHERE id = $1", key).Scan(&user.ID, &user.Name)
+	db, err := sqltx.Executor(ctx, s.db)
+	if err != nil {
+		return user, err
+	}
+	err = db.QueryRowContext(ctx, "SELECT id::text, name FROM pfw_users WHERE id = $1", key).Scan(&user.ID, &user.Name)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.User{}, domain.ErrNotFound
 	}
@@ -68,6 +77,10 @@ func (s *Store) Get(ctx context.Context, id string) (domain.User, error) {
 }
 func (s *Store) Create(ctx context.Context, user domain.User) (domain.User, error) {
 	var created domain.User
-	err := s.db.QueryRowContext(ctx, "INSERT INTO pfw_users (name) VALUES ($1) RETURNING id::text, name", user.Name).Scan(&created.ID, &created.Name)
+	db, err := sqltx.Executor(ctx, s.db)
+	if err != nil {
+		return created, err
+	}
+	err = db.QueryRowContext(ctx, "INSERT INTO pfw_users (name) VALUES ($1) RETURNING id::text, name", user.Name).Scan(&created.ID, &created.Name)
 	return created, err
 }

@@ -138,3 +138,9 @@ I controller registrano rotte locali su gruppi Echo; `internal/platform/http/ser
 sceglie i prefissi. I middleware usano le API native di Echo. Gli errori applicativi
 sono restituiti dagli handler e gestiti dal router con mapper e logger iniettati.
 Vedi la [guida al routing](../../docs/routing.md).
+
+Il repository Postgres usa `sqltx.Executor(ctx, db)`: partecipa automaticamente
+a una transazione applicativa quando riceve il context di `transaction.Runner.Within`,
+e usa il pool negli altri casi. Il servizio corrente non apre transazioni implicite.
+La [guida alle transazioni](../../docs/transactions.md) mostra il provider DI e
+come coordinare più operazioni.

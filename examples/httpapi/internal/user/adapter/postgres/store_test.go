@@ -10,15 +10,17 @@ import (
 	"testing"
 
 	"github.com/palma99/palma-framework/examples/httpapi/internal/user/domain"
+	sqltx "github.com/palma99/palma-framework/transaction/sql"
 )
 
 // A database/sql test driver verifies query parameters and row handling without
 // opening a real database or mutating an external service.
 type testConnector struct{ state *queryState }
 type queryState struct {
-	name  string
-	query string
-	args  []driver.NamedValue
+	name                       string
+	query                      string
+	args                       []driver.NamedValue
+	begins, commits, rollbacks int
 }
 
 func (c testConnector) Connect(context.Context) (driver.Conn, error) {
@@ -34,7 +36,22 @@ type testConnection struct{ state *queryState }
 
 func (c testConnection) Prepare(string) (driver.Stmt, error) { return nil, errors.New("not supported") }
 func (c testConnection) Close() error                        { return nil }
-func (c testConnection) Begin() (driver.Tx, error)           { return nil, errors.New("not supported") }
+func (c testConnection) Begin() (driver.Tx, error) {
+	c.state.begins++
+	return &testTransaction{state: c.state, previousName: c.state.name}, nil
+}
+
+type testTransaction struct {
+	state        *queryState
+	previousName string
+}
+
+func (tx *testTransaction) Commit() error { tx.state.commits++; return nil }
+func (tx *testTransaction) Rollback() error {
+	tx.state.rollbacks++
+	tx.state.name = tx.previousName
+	return nil
+}
 func (c testConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -99,5 +116,39 @@ func TestPostgresQueryMappingAndParameters(t *testing.T) {
 	cancel()
 	if _, err := store.List(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled query: %v", err)
+	}
+}
+
+func TestStoresParticipateInSharedApplicationTransaction(t *testing.T) {
+	state := &queryState{name: "original"}
+	db := sql.OpenDB(testConnector{state: state})
+	defer db.Close()
+	first, second := NewPostgresStore(db), NewPostgresStore(db)
+	manager, err := sqltx.New(db, sqltx.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cause := errors.New("application operation failed")
+	err = manager.Within(context.Background(), func(ctx context.Context) error {
+		if _, err := first.Create(ctx, domain.User{Name: "First"}); err != nil {
+			return err
+		}
+		if _, err := second.Create(ctx, domain.User{Name: "Second"}); err != nil {
+			return err
+		}
+		return cause
+	})
+	if !errors.Is(err, cause) || state.name != "original" || state.begins != 1 || state.rollbacks != 1 || state.commits != 0 {
+		t.Fatalf("shared rollback: %+v %v", state, err)
+	}
+	err = manager.Within(context.Background(), func(ctx context.Context) error {
+		if _, err := first.Create(ctx, domain.User{Name: "First"}); err != nil {
+			return err
+		}
+		_, err := second.Create(ctx, domain.User{Name: "Second"})
+		return err
+	})
+	if err != nil || state.name != "Second" || state.commits != 1 || state.begins != 2 {
+		t.Fatalf("shared commit: %+v %v", state, err)
 	}
 }
