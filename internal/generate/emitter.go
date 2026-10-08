@@ -68,6 +68,16 @@ func emit(pkg *types.Package, initializers []initializer) ([]byte, error) {
 		} else {
 			fmt.Fprintf(&body, ") (%s, error) {\n", root)
 		}
+		if init.environment != "" {
+			envName := values[init.environmentIndex].name
+			fmt.Fprintf(&body, "if %s != %q {\nvar %s %s\n", envName, init.environment, zeroName, root)
+			failure := fmt.Sprintf("%s.Errorf(%q, %s)", imp.add("fmt", "fmt"), "pfw: environment %q does not match generated environment "+strconv.Quote(init.environment)+" for "+init.name, envName)
+			if init.withCleanup {
+				fmt.Fprintf(&body, "return %s, nil, %s\n}\n", zeroName, failure)
+			} else {
+				fmt.Fprintf(&body, "return %s, %s\n}\n", zeroName, failure)
+			}
+		}
 		cleanupName := ""
 		resourceCallbacks := make(map[string]string)
 		if init.withCleanup {

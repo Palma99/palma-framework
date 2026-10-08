@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	pfw "github.com/palma99/palma-framework"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -20,18 +21,26 @@ type Config struct {
 	Patterns []string
 	Output   string
 	Check    bool
+	// Environment selects the graph to generate, or filters inspection.
+	// Generation requires it for initializers with an Environment parameter.
+	Environment string
 }
 
-// Run validates all graphs and type-checks generated code before writing any
+// Run validates the selected graphs and type-checks generated code before writing any
 // files. Check reports missing or stale files without modifying them.
 func Run(ctx context.Context, cfg Config) ([]string, error) {
+	if cfg.Environment != "" {
+		if err := pfw.Environment(cfg.Environment).Validate(); err != nil {
+			return nil, err
+		}
+	}
 	if cfg.Output == "" {
 		cfg.Output = "pfw_gen.go"
 	}
 	if filepath.Base(cfg.Output) != cfg.Output || !strings.HasSuffix(cfg.Output, ".go") || strings.HasSuffix(cfg.Output, "_test.go") || strings.HasPrefix(cfg.Output, ".") || strings.HasPrefix(cfg.Output, "_") {
 		return nil, fmt.Errorf("output must be a Go filename in the template package, without a _test.go suffix")
 	}
-	analyses, err := analyze(ctx, cfg)
+	analyses, err := analyze(ctx, cfg, true)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +89,11 @@ func Run(ctx context.Context, cfg Config) ([]string, error) {
 			}
 		}
 		if len(stale) > 0 {
-			return nil, fmt.Errorf("generated files are missing or stale; run pfw generate:\n%s", strings.Join(stale, "\n"))
+			command := "pfw generate"
+			if cfg.Environment != "" {
+				command += " -env " + cfg.Environment
+			}
+			return nil, fmt.Errorf("generated files are missing or stale; run %s:\n%s", command, strings.Join(stale, "\n"))
 		}
 		return paths, nil
 	}
@@ -184,7 +197,7 @@ type analysis struct {
 	initializers []initializer
 }
 
-func analyze(ctx context.Context, cfg Config) ([]analysis, error) {
+func analyze(ctx context.Context, cfg Config, generating bool) ([]analysis, error) {
 	pkgs, catalog, selected, err := loadPackages(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -195,7 +208,7 @@ func analyze(ctx context.Context, cfg Config) ([]analysis, error) {
 		if !selected[pkg.PkgPath] {
 			continue
 		}
-		initializers, err := readPackage(pkg, catalog)
+		initializers, err := readPackage(pkg, catalog, cfg.Environment, generating)
 		if err != nil {
 			return nil, err
 		}

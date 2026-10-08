@@ -2,8 +2,11 @@ package config
 
 import (
 	"errors"
+	pfw "github.com/palma99/palma-framework"
 	"net"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	pfwconfig "github.com/palma99/palma-framework/config"
@@ -12,8 +15,14 @@ import (
 
 // Config is loaded before DI construction and server startup.
 type Config struct {
-	HTTP HTTPConfig `envPrefix:"HTTP_"`
-	Seed SeedConfig `envPrefix:"SEED_"`
+	HTTP HTTPConfig     `envPrefix:"HTTP_"`
+	Seed SeedConfig     `envPrefix:"SEED_"`
+	DB   DatabaseConfig `envPrefix:"DB_"`
+}
+
+type DatabaseConfig struct {
+	DSN            string        `env:"DSN"`
+	ConnectTimeout time.Duration `env:"CONNECT_TIMEOUT" envDefault:"5s"`
 }
 
 type HTTPConfig struct {
@@ -39,12 +48,25 @@ func (c Config) Validate() error {
 	if c.HTTP.ShutdownTimeout <= 0 {
 		problems = append(problems, pfwconfig.Invalid("HTTP.ShutdownTimeout", "must be positive"))
 	}
-	if _, err := domain.New(c.Seed.UserName); err != nil {
-		problems = append(problems, pfwconfig.Invalid("Seed.UserName", "must contain between 1 and 100 non-blank characters"))
+	if c.DB.ConnectTimeout <= 0 {
+		problems = append(problems, pfwconfig.Invalid("DB.ConnectTimeout", "must be positive"))
 	}
 	return errors.Join(problems...)
 }
 
-func Load() (Config, error) {
-	return pfwconfig.Load[Config](pfwconfig.Options{Prefix: "HTTPAPI_", EnvFiles: []string{".env"}, IgnoreMissingEnvFiles: true})
+func (c Config) ValidateEnvironment(env pfw.Environment) error {
+	if env == pfw.Local {
+		if _, err := domain.New(c.Seed.UserName); err != nil {
+			return pfwconfig.Invalid("Seed.UserName", "must contain between 1 and 100 non-blank characters")
+		}
+		return nil
+	}
+	if strings.TrimSpace(c.DB.DSN) == "" {
+		return pfwconfig.Invalid("DB.DSN", "required outside local")
+	}
+	return nil
+}
+
+func Load(env pfw.Environment) (Config, error) {
+	return pfwconfig.Load[Config](pfwconfig.Options{Prefix: "HTTPAPI_", Environment: env, EnvDir: os.Getenv("PFW_ENV_DIR")})
 }

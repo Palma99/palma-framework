@@ -14,7 +14,7 @@ func TestInspectJSONAndText(t *testing.T) {
 		t.Fatal(err)
 	}
 	var output, diagnostics bytes.Buffer
-	if err := run([]string{"inspect", "-json", pattern}, &output, &diagnostics); err != nil {
+	if err := run([]string{"inspect", "-json", "-env", "local", pattern}, &output, &diagnostics); err != nil {
 		t.Fatal(err)
 	}
 	var report struct {
@@ -27,7 +27,7 @@ func TestInspectJSONAndText(t *testing.T) {
 		t.Fatalf("JSON output: %s diagnostics: %s err: %v", output.String(), diagnostics.String(), err)
 	}
 	output.Reset()
-	if err := run([]string{"inspect", pattern}, &output, &diagnostics); err != nil {
+	if err := run([]string{"inspect", "-env", "local", pattern}, &output, &diagnostics); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(output.String(), "AutoBind=true") || !strings.Contains(output.String(), "coconut") {

@@ -4,25 +4,48 @@
 package bootstrap
 
 import (
+	context "context"
+	errors "errors"
 	fmt "fmt"
+	pfw "github.com/palma99/palma-framework"
 	config "github.com/palma99/palma-framework/examples/httpapi/internal/config"
 	apihttp "github.com/palma99/palma-framework/examples/httpapi/internal/platform/http"
 	userhttp "github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/http"
-	memory "github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/memory"
+	postgres "github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/postgres"
 	application "github.com/palma99/palma-framework/examples/httpapi/internal/user/application"
 	http "net/http"
+	sync "sync"
 )
 
-func Initialize(input0 config.Config) (*http.Server, error) {
-	value0, err := memory.NewMemoryStore(input0)
+func Initialize(input0 context.Context, input1 pfw.Environment, input2 config.Config) (*http.Server, func() error, error) {
+	if input1 != "uat" {
+		var zero *http.Server
+		return zero, nil, fmt.Errorf("pfw: environment %q does not match generated environment \"uat\" for Initialize", input1)
+	}
+	var close0 func() error
+	var cleanupOnce sync.Once
+	var cleanupErr error
+	cleanup := func() error {
+		cleanupOnce.Do(func() {
+			if close0 != nil {
+				if err := close0(); err != nil {
+					cleanupErr = errors.Join(cleanupErr, fmt.Errorf("pfw: cleanup github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/postgres.OpenDatabase: %w", err))
+				}
+				close0 = nil
+			}
+		})
+		return cleanupErr
+	}
+	value0, close0, err := postgres.OpenDatabase(input0, input2)
 	if err != nil {
 		var zero *http.Server
-		return zero, fmt.Errorf("pfw: github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/memory.NewMemoryStore: %w", err)
+		return zero, nil, errors.Join(fmt.Errorf("pfw: github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/postgres.OpenDatabase: %w", err), cleanup())
 	}
-	value1 := application.NewService(value0)
-	value2 := userhttp.NewErrorMapper()
-	value3 := userhttp.NewController(value1, value2)
-	value4 := apihttp.Routes(value3)
-	value5 := apihttp.Server(value4, input0)
-	return value5, nil
+	value1 := postgres.NewPostgresStore(value0)
+	value2 := application.NewService(value1)
+	value3 := userhttp.NewErrorMapper()
+	value4 := userhttp.NewController(value2, value3)
+	value5 := apihttp.Routes(value4)
+	value6 := apihttp.Server(value5, input2)
+	return value6, cleanup, nil
 }

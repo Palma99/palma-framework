@@ -14,8 +14,8 @@ entrambi i casi; il framework risolve e genera il wiring.
 Dal repository:
 
 ```sh
-go run ./cmd/pfw generate ./examples/httpapi/internal/bootstrap
-go run ./cmd/pfw generate -check ./examples/httpapi/internal/bootstrap
+go run ./cmd/pfw generate -env local ./examples/httpapi/internal/bootstrap
+go run ./cmd/pfw generate -env local -check ./examples/httpapi/internal/bootstrap
 go test ./...
 go run ./examples/httpapi/cmd/api
 ```

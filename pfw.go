@@ -33,6 +33,17 @@ func Bind[Interface, Concrete any]() Registration { return Implementation[Interf
 // Module groups static registrations without imposing a package layout.
 func Module(registrations ...Registration) Registration { return Registration{} }
 
+// ForEnv activates registrations in the named environment only.
+func ForEnv(name Environment, registrations ...Registration) Registration { return Registration{} }
+
+// Environments declares supported names. It is required for initializers with an
+// Environment parameter; ForEnv names must belong to this explicit set.
+func Environments(names ...Environment) Registration { return Registration{} }
+
+// Override gives wrapped constructors precedence in their scope. Manual interface
+// bindings still win; different override candidates remain ambiguous.
+func Override(registrations ...Registration) Registration { return Registration{} }
+
 // Build declares the root type for an initializer. Initializer parameters are
 // external inputs. Build is a generation marker, never a runtime DI container.
 func Build[T any](registrations ...Registration) (T, error) {

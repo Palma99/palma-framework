@@ -144,6 +144,11 @@ la configurazione; la DI rimane generata a build time, senza reflection.
 
 ## Esempio HTTP
 
+Il loader supporta anche `Options.Environment` e `Options.EnvDir` per selezionare
+automaticamente i file `.env`, `.env.<ambiente>`, `.env.<ambiente>.local`.
+`ValidateEnvironment(pfw.Environment)` permette vincoli condizionali, dopo la
+validazione comune. La [guida ambienti](environments.md) ne descrive l'uso.
+
 `examples/httpapi` usa il prefisso `HTTPAPI_`:
 
 | Variabile | Default |

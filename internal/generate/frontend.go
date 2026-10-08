@@ -20,20 +20,24 @@ type constructor struct {
 }
 
 type initializer struct {
-	name         string
-	root         types.Type
-	graph        di.Graph
-	constructors map[string]constructor
-	plan         di.Plan
-	withCleanup  bool
-	cleanupType  types.Type
-	manual       map[string]bool
-	excluded     map[string]bool
-	autoScopes   []map[string]bool
-	registered   []di.Provider
-	discovered   map[string]bool
-	modules      []*registrationScope
-	inputNames   []string
+	name                string
+	root                types.Type
+	graph               di.Graph
+	constructors        map[string]constructor
+	plan                di.Plan
+	withCleanup         bool
+	cleanupType         types.Type
+	manual              map[string]bool
+	excluded            map[string]bool
+	autoScopes          []map[string]bool
+	registered          []di.Provider
+	discovered          map[string]bool
+	modules             []*registrationScope
+	inputNames          []string
+	environment         string
+	environmentIndex    int
+	environmentBindings []di.Binding
+	overrides           map[string]bool
 }
 
 type frontend struct {
@@ -45,6 +49,8 @@ type frontend struct {
 	discovery   *discovery
 	scopes      []*registrationScope
 	moduleName  string
+	conditional bool
+	overriding  bool
 }
 
 type registrationScope struct {
@@ -71,7 +77,7 @@ func newFrontend(pkg *packages.Package) *frontend {
 	return &f
 }
 
-func readPackage(pkg *packages.Package, catalog *discovery) ([]initializer, error) {
+func readPackage(pkg *packages.Package, catalog *discovery, environment string, generating bool) ([]initializer, error) {
 	f := newFrontend(pkg)
 	f.discovery = catalog
 	var result []initializer
@@ -113,61 +119,94 @@ func readPackage(pkg *packages.Package, catalog *discovery) ([]initializer, erro
 			if sig.Recv() != nil || sig.TypeParams().Len() != 0 || sig.Variadic() || sig.Results().Len() != resultCount || !isError(sig.Results().At(resultCount-1).Type()) || (withCleanup && !isCleanup(sig.Results().At(1).Type())) {
 				return nil, f.errorAt(fn, "initializer must be non-generic and return (T, error) for Build or (T, func() error, error) for BuildWithCleanup")
 			}
-			init := initializer{name: fn.Name.Name, root: sig.Results().At(0).Type(), constructors: make(map[string]constructor), withCleanup: withCleanup, manual: make(map[string]bool), excluded: make(map[string]bool), discovered: make(map[string]bool)}
-			if withCleanup {
-				init.cleanupType = sig.Results().At(1).Type()
-			}
-			buildType := pkg.TypesInfo.TypeOf(builds[0])
-			resultTuple, ok := buildType.(*types.Tuple)
-			if !ok || resultTuple.Len() != resultCount || !types.Identical(resultTuple.At(0).Type(), init.root) {
-				return nil, f.errorAt(fn, "pfw.%s type argument must match the initializer's root result exactly", f.marker(builds[0].Fun))
-			}
+			envIndex := -1
 			for i := 0; i < sig.Params().Len(); i++ {
-				init.graph.Inputs = append(init.graph.Inputs, di.Input{Name: fmt.Sprintf("input%d", i), Type: sig.Params().At(i).Type()})
-				name := sig.Params().At(i).Name()
-				if name == "" || name == "_" {
-					name = fmt.Sprintf("input%d", i)
-				}
-				init.inputNames = append(init.inputNames, name)
-			}
-			for _, arg := range builds[0].Args {
-				if err := f.registration(arg, &init); err != nil {
-					return nil, err
-				}
-			}
-			var included []di.Provider
-			init.registered = append([]di.Provider(nil), init.graph.Providers...)
-			for _, provider := range init.graph.Providers {
-				if init.manual[provider.Name] || !init.excluded[provider.Name] {
-					included = append(included, provider)
-				}
-			}
-			init.graph.Providers = included
-			for _, scope := range init.autoScopes {
-				var names []string
-				for _, p := range included {
-					if scope[p.Name] {
-						names = append(names, p.Name)
+				if isEnvironment(sig.Params().At(i).Type()) {
+					if envIndex != -1 {
+						return nil, f.errorAt(fn, "only one pfw.Environment parameter is allowed")
 					}
-				}
-				init.graph.RootAutoBind = append(init.graph.RootAutoBind, names...)
-				for n := range init.graph.Providers {
-					if scope[init.graph.Providers[n].Name] {
-						init.graph.Providers[n].AutoBind = append(init.graph.Providers[n].AutoBind, names...)
-					}
+					envIndex = i
 				}
 			}
-			plan, err := init.graph.Resolve(init.root)
+			profiles, err := f.profiles(builds[0].Args, envIndex >= 0)
 			if err != nil {
-				return nil, f.errorAt(fn, "%v", err)
+				return nil, err
 			}
-			init.plan = plan
-			for _, p := range plan.Providers {
-				if init.constructors[p.Name].cleanup && !withCleanup {
-					return nil, f.errorAt(fn, "resource %s requires pfw.BuildWithCleanup[T] and initializer results (T, func() error, error)", p.Name)
+			if generating && envIndex >= 0 {
+				if environment == "" {
+					return nil, f.errorAt(fn, "initializer with a pfw.Environment parameter requires generate -env <name>")
 				}
+				found := false
+				for _, profile := range profiles {
+					found = found || profile == environment
+				}
+				if !found {
+					return nil, f.errorAt(fn, "environment %q is not declared in Environments", environment)
+				}
+				profiles = []string{environment}
 			}
-			result = append(result, init)
+			for _, profile := range profiles {
+				init := initializer{environment: profile, environmentIndex: envIndex, environmentBindings: []di.Binding{}, overrides: make(map[string]bool), name: fn.Name.Name, root: sig.Results().At(0).Type(), constructors: make(map[string]constructor), withCleanup: withCleanup, manual: make(map[string]bool), excluded: make(map[string]bool), discovered: make(map[string]bool)}
+				if withCleanup {
+					init.cleanupType = sig.Results().At(1).Type()
+				}
+				buildType := pkg.TypesInfo.TypeOf(builds[0])
+				resultTuple, ok := buildType.(*types.Tuple)
+				if !ok || resultTuple.Len() != resultCount || !types.Identical(resultTuple.At(0).Type(), init.root) {
+					return nil, f.errorAt(fn, "pfw.%s type argument must match the initializer's root result exactly", f.marker(builds[0].Fun))
+				}
+				for i := 0; i < sig.Params().Len(); i++ {
+					init.graph.Inputs = append(init.graph.Inputs, di.Input{Name: fmt.Sprintf("input%d", i), Type: sig.Params().At(i).Type()})
+					name := sig.Params().At(i).Name()
+					if name == "" || name == "_" {
+						name = fmt.Sprintf("input%d", i)
+					}
+					init.inputNames = append(init.inputNames, name)
+				}
+				for _, arg := range builds[0].Args {
+					if err := f.registration(arg, &init); err != nil {
+						return nil, err
+					}
+				}
+				if err := mergeEnvironmentBindings(&init); err != nil {
+					return nil, f.errorAt(fn, "%v", err)
+				}
+				var included []di.Provider
+				init.registered = append([]di.Provider(nil), init.graph.Providers...)
+				for _, provider := range init.graph.Providers {
+					if init.manual[provider.Name] || !init.excluded[provider.Name] {
+						provider.Override = init.overrides[provider.Name]
+						included = append(included, provider)
+					}
+				}
+				init.graph.Providers = included
+				for _, scope := range init.autoScopes {
+					var names []string
+					for _, p := range included {
+						if scope[p.Name] {
+							names = append(names, p.Name)
+						}
+					}
+					init.graph.RootAutoBind = append(init.graph.RootAutoBind, names...)
+					for n := range init.graph.Providers {
+						if scope[init.graph.Providers[n].Name] {
+							init.graph.Providers[n].AutoBind = append(init.graph.Providers[n].AutoBind, names...)
+						}
+					}
+				}
+				plan, err := init.graph.Resolve(init.root)
+				if err != nil {
+					return nil, f.errorAt(fn, "environment %q: %v", profile, err)
+				}
+				init.plan = plan
+				for _, p := range plan.Providers {
+					if init.constructors[p.Name].cleanup && !withCleanup {
+						return nil, f.errorAt(fn, "resource %s requires pfw.BuildWithCleanup[T] and initializer results (T, func() error, error)", p.Name)
+					}
+				}
+				result = append(result, init)
+			}
+
 		}
 	}
 	for id, obj := range pkg.TypesInfo.Uses {
@@ -210,6 +249,38 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 		return f.errorAt(expr, "expected a static pfw registration; dynamic expressions and slices are unsupported")
 	}
 	switch f.marker(call.Fun) {
+	case "Environments":
+		return nil // Validated before materializing each environment graph.
+	case "ForEnv":
+		name, err := f.environmentArgument(call)
+		if err != nil {
+			return err
+		}
+		if init.environment != name {
+			return nil
+		}
+		previous := f.conditional
+		f.conditional = true
+		defer func() { f.conditional = previous }()
+		for _, arg := range call.Args[1:] {
+			if err := f.registration(arg, init); err != nil {
+				return err
+			}
+		}
+		return nil
+	case "Override":
+		if len(call.Args) == 0 {
+			return f.errorAt(call, "pfw.Override requires constructor registrations")
+		}
+		previous := f.overriding
+		f.overriding = true
+		defer func() { f.overriding = previous }()
+		for _, arg := range call.Args {
+			if err := f.registration(arg, init); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "Constructors":
 		for _, arg := range call.Args {
 			fn, ok := f.object(arg).(*types.Func)
@@ -235,7 +306,15 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 		if !ok || len(idx.Indices) != 2 || len(call.Args) != 0 {
 			return f.errorAt(call, "expected pfw.%s[Interface, Concrete]()", f.marker(call.Fun))
 		}
-		init.graph.Bindings = append(init.graph.Bindings, di.Binding{Interface: f.pkg.TypesInfo.TypeOf(idx.Indices[0]), Concrete: f.pkg.TypesInfo.TypeOf(idx.Indices[1])})
+		if f.overriding {
+			return f.errorAt(call, "Override wraps constructor registrations, not interface bindings")
+		}
+		binding := di.Binding{Interface: f.pkg.TypesInfo.TypeOf(idx.Indices[0]), Concrete: f.pkg.TypesInfo.TypeOf(idx.Indices[1])}
+		if f.conditional {
+			init.environmentBindings = append(init.environmentBindings, binding)
+		} else {
+			init.graph.Bindings = append(init.graph.Bindings, binding)
+		}
 	case "Module":
 		source := f.pkg.Fset.Position(call.Pos()).String()
 		name := f.moduleName
@@ -284,6 +363,7 @@ func (f *frontend) addConstructor(fn *types.Func, node ast.Node, init *initializ
 	}
 	init.manual[name] = init.manual[name] || manual
 	init.discovered[name] = init.discovered[name] || !manual
+	init.overrides[name] = init.overrides[name] || f.overriding
 	if _, exists := init.constructors[name]; exists {
 		return nil
 	}

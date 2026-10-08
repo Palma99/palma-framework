@@ -23,13 +23,14 @@ func runInspect(ctx context.Context, args []string, stdout, stderr io.Writer) er
 	asJSON := flags.Bool("json", false, "print the dependency report as JSON")
 	full := flags.Bool("full", false, "show full package names and source locations")
 	color := flags.String("color", "auto", "color mode: auto, always, never")
+	env := flags.String("env", "", "inspect a specific environment")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if *color != "auto" && *color != "always" && *color != "never" {
 		return fmt.Errorf("color must be auto, always or never")
 	}
-	report, err := generate.Inspect(ctx, generate.Config{Patterns: flags.Args()})
+	report, err := generate.Inspect(ctx, generate.Config{Patterns: flags.Args(), Environment: *env})
 	if err != nil {
 		return err
 	}

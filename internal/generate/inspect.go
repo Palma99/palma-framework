@@ -2,6 +2,8 @@ package generate
 
 import (
 	"context"
+	"fmt"
+	pfw "github.com/palma99/palma-framework"
 	"go/types"
 	"sort"
 )
@@ -14,6 +16,7 @@ type Report struct {
 type InitializerReport struct {
 	Package           string           `json:"package"`
 	Name              string           `json:"name"`
+	Environment       string           `json:"environment,omitempty"`
 	Root              string           `json:"root"`
 	WithCleanup       bool             `json:"with_cleanup"`
 	Inputs            []InputReport    `json:"inputs"`
@@ -39,6 +42,7 @@ type ProviderReport struct {
 	ExclusionRequested bool     `json:"exclusion_requested"`
 	Fallible           bool     `json:"fallible"`
 	Cleanup            bool     `json:"cleanup"`
+	Override           bool     `json:"override,omitempty"`
 }
 type ModuleReport struct {
 	Name      string   `json:"name"`
@@ -58,14 +62,34 @@ type BindingReport struct {
 // Inspect validates and describes the same graph used by generation. It never
 // emits/writes Go files or evaluates constructors/configuration at runtime.
 func Inspect(ctx context.Context, cfg Config) (Report, error) {
-	analyses, err := analyze(ctx, cfg)
+	if cfg.Environment != "" {
+		if err := pfw.Environment(cfg.Environment).Validate(); err != nil {
+			return Report{}, err
+		}
+	}
+	analyses, err := analyze(ctx, cfg, false)
 	if err != nil {
 		return Report{}, err
 	}
 	report := Report{Version: 1, Initializers: []InitializerReport{}}
+	hasProfiles, matched := false, false
 	for _, analysis := range analyses {
 		for _, init := range analysis.initializers {
-			r := InitializerReport{Package: analysis.pkg.PkgPath, Name: init.name, Root: typeString(init.root), WithCleanup: init.withCleanup, Inputs: []InputReport{}, Providers: []ProviderReport{}, Modules: []ModuleReport{}, Bindings: []BindingReport{}, ConstructionOrder: []string{}, CleanupOrder: []string{}}
+			if init.environment != "" {
+				hasProfiles = true
+				matched = matched || init.environment == cfg.Environment
+			}
+		}
+	}
+	if cfg.Environment != "" && hasProfiles && !matched {
+		return Report{}, fmt.Errorf("no graph for environment %q", cfg.Environment)
+	}
+	for _, analysis := range analyses {
+		for _, init := range analysis.initializers {
+			if cfg.Environment != "" && init.environment != "" && init.environment != cfg.Environment {
+				continue
+			}
+			r := InitializerReport{Environment: init.environment, Package: analysis.pkg.PkgPath, Name: init.name, Root: typeString(init.root), WithCleanup: init.withCleanup, Inputs: []InputReport{}, Providers: []ProviderReport{}, Modules: []ModuleReport{}, Bindings: []BindingReport{}, ConstructionOrder: []string{}, CleanupOrder: []string{}}
 			for n, input := range init.graph.Inputs {
 				r.Inputs = append(r.Inputs, InputReport{Name: init.inputNames[n], Type: typeString(input.Type)})
 			}
@@ -111,6 +135,7 @@ func Inspect(ctx context.Context, cfg Config) (Report, error) {
 					status = "used"
 				}
 				item := ProviderReport{Name: p.Name, Output: typeString(p.Output), Dependencies: []string{}, Origins: []string{}, Modules: []string{}, AutoBindScopes: []string{}, Source: analysis.pkg.Fset.Position(ctor.fn.Pos()).String(), Status: status, ExclusionRequested: init.excluded[p.Name], Fallible: ctor.fallible, Cleanup: ctor.cleanup}
+				item.Override = init.overrides[p.Name]
 				if init.manual[p.Name] {
 					item.Origins = append(item.Origins, "manual")
 				}
@@ -152,7 +177,7 @@ func Inspect(ctx context.Context, cfg Config) (Report, error) {
 					}
 				}
 				b := BindingReport{Consumer: consumer, Interface: typeString(requested), SelectedType: typeString(selected), Mode: mode, AutoBindScopes: []string{}}
-				for _, p := range init.graph.Providers {
+				for _, p := range init.plan.Providers {
 					if types.Identical(p.Output, selected) {
 						b.Provider = p.Name
 					}
@@ -190,8 +215,11 @@ func Inspect(ctx context.Context, cfg Config) (Report, error) {
 		}
 	}
 	sort.Slice(report.Initializers, func(i, j int) bool {
-		return report.Initializers[i].Package+report.Initializers[i].Name < report.Initializers[j].Package+report.Initializers[j].Name
+		return report.Initializers[i].Package+report.Initializers[i].Name+report.Initializers[i].Environment < report.Initializers[j].Package+report.Initializers[j].Name+report.Initializers[j].Environment
 	})
+	if len(report.Initializers) == 0 {
+		return Report{}, fmt.Errorf("no graph for environment %q", cfg.Environment)
+	}
 	return report, nil
 }
 

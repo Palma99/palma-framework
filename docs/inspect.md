@@ -8,6 +8,7 @@ go run ./cmd/pfw inspect ./examples/httpapi/internal/bootstrap
 go run ./cmd/pfw inspect -json ./examples/httpapi/internal/bootstrap
 go run ./cmd/pfw inspect -full ./examples/httpapi/internal/bootstrap
 go run ./cmd/pfw inspect -color=always ./examples/httpapi/internal/bootstrap
+go run ./cmd/pfw inspect -env local ./examples/httpapi/internal/bootstrap
 ```
 
 Con la CLI installata: `pfw inspect [packages...]`. Senza pattern analizza il
@@ -16,6 +17,10 @@ da `generate`, per esempio `./...`. La discovery resta limitata ai package
 selezionati nei marker `Discover` dei singoli initializer.
 
 ## Contenuto del report
+
+Per gli initializer environment-aware viene prodotto un report per ambiente;
+`-env` seleziona quale mostrare. I provider override hanno un badge nella vista
+testuale e un campo `override` nel JSON.
 
 Il report distingue ogni initializer e mostra:
 

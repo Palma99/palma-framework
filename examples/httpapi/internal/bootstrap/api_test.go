@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v5"
+	pfw "github.com/palma99/palma-framework"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/bootstrap"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/user/domain"
@@ -17,10 +18,15 @@ import (
 
 func server(t *testing.T) *http.Server {
 	t.Helper()
-	s, err := bootstrap.Initialize(config.Config{HTTP: config.HTTPConfig{Address: "127.0.0.1:0"}, Seed: config.SeedConfig{UserName: "Ada"}})
+	s, cleanup, err := bootstrap.Initialize(context.Background(), pfw.Local, config.Config{HTTP: config.HTTPConfig{Address: "127.0.0.1:0"}, Seed: config.SeedConfig{UserName: "Ada"}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := cleanup(); err != nil {
+			t.Error(err)
+		}
+	})
 	if _, ok := s.Handler.(*echo.Echo); !ok {
 		t.Fatalf("expected Echo, got %T", s.Handler)
 	}
@@ -125,9 +131,9 @@ func TestInternalErrorDoesNotExposeCause(t *testing.T) {
 }
 
 func TestConstructorValidation(t *testing.T) {
-	s, err := bootstrap.Initialize(config.Config{HTTP: config.HTTPConfig{Address: ":8080"}})
+	s, cleanup, err := bootstrap.Initialize(context.Background(), pfw.Local, config.Config{HTTP: config.HTTPConfig{Address: ":8080"}})
 	var invalid *domain.ValidationError
-	if s != nil || !errors.As(err, &invalid) || invalid.Field != "name" {
+	if cleanup != nil || s != nil || !errors.As(err, &invalid) || invalid.Field != "name" {
 		t.Fatalf("initialize = %v %v", s, err)
 	}
 }

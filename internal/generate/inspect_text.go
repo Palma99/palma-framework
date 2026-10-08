@@ -169,6 +169,9 @@ func (report Report) WriteText(w io.Writer, settings ...TextOptions) error {
 			}
 		}
 		fmt.Fprintf(&out, "%s\n", paint("1;36", short(init.Package+"."+init.Name)))
+		if init.Environment != "" {
+			fmt.Fprintf(&out, "  Environment: %s\n", paint("1;33", init.Environment))
+		}
 		fmt.Fprintf(&out, "  Root: %s\n  %d used · %d unused · %d excluded\n\n", short(init.Root), len(init.ConstructionOrder), unused, excluded)
 		if len(init.Inputs) > 0 {
 			out.WriteString(paint("1;36", "Inputs") + "\n")
@@ -193,6 +196,9 @@ func (report Report) WriteText(w io.Writer, settings ...TextOptions) error {
 			}
 			if p.Cleanup {
 				badges = append(badges, "cleanup")
+			}
+			if p.Override {
+				badges = append(badges, "override")
 			}
 			if len(badges) > 0 {
 				fmt.Fprintf(&out, "     %s\n", paint("2", strings.Join(badges, " · ")))

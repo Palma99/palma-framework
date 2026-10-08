@@ -26,8 +26,8 @@ Il nome usato nel codice è `pfw`.
 Richiede Go 1.26 o successivo.
 
 ```sh
-go run ./cmd/pfw generate ./examples/httpapi/internal/bootstrap
-go run ./cmd/pfw generate -check ./examples/httpapi/internal/bootstrap
+go run ./cmd/pfw generate -env local ./examples/httpapi/internal/bootstrap
+go run ./cmd/pfw generate -env local -check ./examples/httpapi/internal/bootstrap
 go test ./...
 go run ./examples/httpapi/cmd/api
 ```
@@ -80,3 +80,11 @@ go run ./cmd/pfw inspect ./examples/httpapi/internal/bootstrap
 ```
 
 La [guida inspect](docs/inspect.md) descrive il report e l'uso in tooling.
+
+La [gestione degli ambienti](docs/environments.md) offre `ForEnv`, override,
+binding specifici e wiring generato per un ambiente alla volta:
+
+```sh
+go run ./cmd/pfw run -env local ./examples/httpapi/cmd/api
+go run ./cmd/pfw inspect -env production ./examples/httpapi/internal/bootstrap
+```

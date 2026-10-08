@@ -5,6 +5,7 @@ package config
 import (
 	"encoding"
 	"fmt"
+	pfw "github.com/palma99/palma-framework"
 	"math"
 	"os"
 	"reflect"
@@ -21,11 +22,16 @@ type Options struct {
 	EnvFiles []string
 	// IgnoreMissingEnvFiles ignores absent files, never syntax/read errors.
 	IgnoreMissingEnvFiles bool
+	// Environment selects .env, .env.<name>, .env.<name>.local when EnvFiles is empty.
+	Environment pfw.Environment
+	EnvDir      string
 }
 
 // Validator is optionally implemented by the configuration value or its pointer.
 // Validation messages are supplied by the application and should omit secrets.
 type Validator interface{ Validate() error }
+
+type EnvironmentValidator interface{ ValidateEnvironment(pfw.Environment) error }
 
 type FieldError struct{ Field, Variable, Reason string }
 
@@ -84,6 +90,13 @@ func Load[T any](options Options) (T, error) {
 	} else if validator, ok := any(value).(Validator); ok {
 		if err := validator.Validate(); err != nil {
 			return zero, err
+		}
+	}
+	if options.Environment != "" {
+		if validator, ok := any(&value).(EnvironmentValidator); ok {
+			if err := validator.ValidateEnvironment(options.Environment); err != nil {
+				return zero, err
+			}
 		}
 	}
 	return value, nil

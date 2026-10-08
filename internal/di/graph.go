@@ -18,6 +18,7 @@ type Provider struct {
 	// AutoBind lists eligible provider names for this constructor's dependencies.
 	// Empty means automatic interface binding is disabled.
 	AutoBind []string
+	Override bool
 }
 
 // Binding explicitly selects a concrete type for an interface dependency.
@@ -58,6 +59,22 @@ type Plan struct {
 // Resolve validates registrations and plans construction for the requested
 // roots. It compares Go type identities rather than printed names.
 func (g Graph) Resolve(roots ...types.Type) (Plan, error) {
+	// Exact-type overrides shadow ordinary providers without deleting providers
+	// of other concrete types, which may still be explicitly requested.
+	var active []Provider
+	for _, p := range g.Providers {
+		shadowed := false
+		for _, other := range g.Providers {
+			if other.Override && !p.Override && p.Output != nil && other.Output != nil && types.Identical(p.Output, other.Output) {
+				shadowed = true
+				break
+			}
+		}
+		if !shadowed {
+			active = append(active, p)
+		}
+	}
+	g.Providers = active
 	if err := g.validate(); err != nil {
 		return Plan{}, err
 	}
@@ -195,6 +212,31 @@ func (g Graph) dependencyType(t types.Type, eligible []string) (types.Type, erro
 	for _, input := range g.Inputs {
 		if types.Identical(t, input.Type) {
 			return t, nil
+		}
+	}
+	// Prefer compatible overrides within the consumer's opt-in scope.
+	if iface, ok := t.Underlying().(*types.Interface); ok && iface.IsMethodSet() {
+		var choices []Provider
+		for _, p := range g.Providers {
+			if p.Override && types.AssignableTo(p.Output, t) {
+				for _, name := range eligible {
+					if name == p.Name {
+						choices = append(choices, p)
+						break
+					}
+				}
+			}
+		}
+		if len(choices) > 1 {
+			var names []string
+			for _, p := range choices {
+				names = append(names, p.Name)
+			}
+			sort.Strings(names)
+			return nil, fmt.Errorf("ambiguous override implementations for %s: %s; specify pfw.Implementation or pfw.Bind", typeName(t), strings.Join(names, ", "))
+		}
+		if len(choices) == 1 {
+			return choices[0].Output, nil
 		}
 	}
 	for _, p := range g.Providers {

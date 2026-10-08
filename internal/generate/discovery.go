@@ -46,8 +46,17 @@ func discoveryPatterns(pkgs []*packages.Package) ([]string, error) {
 				for _, pattern := range patterns {
 					found[pattern] = true
 				}
-			case "Module", "Build", "BuildWithCleanup":
+			case "Module", "Build", "BuildWithCleanup", "Override":
 				for _, arg := range call.Args {
+					if err := walk(arg); err != nil {
+						return err
+					}
+				}
+			case "ForEnv":
+				if _, err := f.environmentArgument(call); err != nil {
+					return err
+				}
+				for _, arg := range call.Args[1:] {
 					if err := walk(arg); err != nil {
 						return err
 					}

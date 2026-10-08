@@ -3,18 +3,28 @@
 package bootstrap
 
 import (
+	"context"
 	"net/http"
 
 	pfw "github.com/palma99/palma-framework"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
 	apihttp "github.com/palma99/palma-framework/examples/httpapi/internal/platform/http"
+	"github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/memory"
+	"github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/postgres"
+	"github.com/palma99/palma-framework/examples/httpapi/internal/user/application"
 )
 
 var Users = pfw.Module(
 	pfw.Discover("../user/..."),
+	pfw.Implementation[application.Repository, *postgres.Store](),
+	pfw.ForEnv("local", pfw.Bind[application.Repository, *memory.Store]()),
 	pfw.AutoBind(),
 )
 
-func Initialize(cfg config.Config) (*http.Server, error) {
-	return pfw.Build[*http.Server](Users, pfw.Constructors(apihttp.Routes, apihttp.Server))
+func Initialize(ctx context.Context, env pfw.Environment, cfg config.Config) (*http.Server, func() error, error) {
+	return pfw.BuildWithCleanup[*http.Server](
+		pfw.Environments(pfw.Local, "uat", pfw.Production),
+		Users,
+		pfw.Constructors(apihttp.Routes, apihttp.Server),
+	)
 }

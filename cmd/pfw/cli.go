@@ -17,6 +17,7 @@ type command struct {
 var commands = map[string]command{
 	"generate": generateCommand,
 	"inspect":  inspectCommand,
+	"run":      runCommand,
 }
 
 func run(args []string, stdout, stderr io.Writer) error {

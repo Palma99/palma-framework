@@ -2,7 +2,7 @@
 
 - `main.go`: entry point, stampa dell'errore e codice di uscita.
 - `cli.go`: registro dei comandi, dispatch e usage generato dal registro.
-- `generate.go` e `inspect.go`: flag, validazione ed esecuzione del rispettivo comando.
+- `generate.go`, `inspect.go` e `run.go`: flag, validazione ed esecuzione del rispettivo comando.
 
 Per aggiungere un comando, creare un file con una dichiarazione `command` e
 un handler `func(context.Context, []string, io.Writer, io.Writer) error`, quindi

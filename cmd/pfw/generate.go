@@ -10,7 +10,7 @@ import (
 )
 
 var generateCommand = command{
-	usage: "generate [-check] [-output pfw_gen.go] [packages...]",
+	usage: "generate [-env name] [-check] [-output pfw_gen.go] [packages...]",
 	run:   runGenerate,
 }
 
@@ -19,10 +19,11 @@ func runGenerate(ctx context.Context, args []string, stdout, stderr io.Writer) e
 	flags.SetOutput(stderr)
 	check := flags.Bool("check", false, "verify generated files without writing")
 	output := flags.String("output", "pfw_gen.go", "output filename within each template package")
+	env := flags.String("env", "", "environment to generate (required for environment-aware initializers)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	paths, err := generate.Run(ctx, generate.Config{Patterns: flags.Args(), Output: *output, Check: *check})
+	paths, err := generate.Run(ctx, generate.Config{Patterns: flags.Args(), Output: *output, Check: *check, Environment: *env})
 	if err != nil {
 		return err
 	}
