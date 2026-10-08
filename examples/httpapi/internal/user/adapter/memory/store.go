@@ -19,7 +19,7 @@ type Store struct {
 
 //pfw:coconut
 func NewMemoryStore(cfg config.Config) (*Store, error) {
-	seed, err := domain.New(cfg.SeedUserName)
+	seed, err := domain.New(cfg.Seed.UserName)
 	if err != nil {
 		return nil, fmt.Errorf("initial user: %w", err)
 	}

@@ -14,7 +14,7 @@ import (
 )
 
 func TestConcurrentCreationAndSnapshotIsolation(t *testing.T) {
-	store, err := memory.NewMemoryStore(config.Config{SeedUserName: "Ada"})
+	store, err := memory.NewMemoryStore(config.Config{Seed: config.SeedConfig{UserName: "Ada"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestConcurrentCreationAndSnapshotIsolation(t *testing.T) {
 }
 
 func TestCancelledCreateDoesNotStoreUser(t *testing.T) {
-	store, err := memory.NewMemoryStore(config.Config{SeedUserName: "Ada"})
+	store, err := memory.NewMemoryStore(config.Config{Seed: config.SeedConfig{UserName: "Ada"}})
 	if err != nil {
 		t.Fatal(err)
 	}

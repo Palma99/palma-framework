@@ -50,8 +50,20 @@ go run ./examples/httpapi/cmd/api
 
 In alternativa alla prima riga: `go generate ./examples/httpapi/internal/bootstrap`.
 L'API ascolta su `:8080`, con un utente iniziale `Ada` (ID `1`). Indirizzo e
-nome sono forniti tramite `config.Config` nell'entry point. Il caricamento da
-environment non è implementato in questo esempio.
+nome sono caricati da environment o `.env` in `config.Config`, con default e validazione
+prima di costruire il server. Le sottostruct sono `HTTP` e `Seed`. Il prefisso è
+`HTTPAPI_`: `HTTP_ADDRESS`, `SEED_USER_NAME`, `HTTP_READ_HEADER_TIMEOUT` e `HTTP_SHUTDOWN_TIMEOUT`. I timeout hanno
+default `5s` e devono essere positivi.
+
+```sh
+cp examples/httpapi/.env.example .env
+HTTPAPI_HTTP_ADDRESS=:9090 HTTPAPI_HTTP_SHUTDOWN_TIMEOUT=10s go run ./examples/httpapi/cmd/api
+```
+
+La [guida configurazione](../../docs/configuration.md) descrive parsing, default
+e validazione. Il file `.env` viene letto dalla directory corrente se presente,
+con precedenza all'environment del processo. La configurazione viene caricata
+dall'entry point prima del wiring.
 
 ## Endpoint
 

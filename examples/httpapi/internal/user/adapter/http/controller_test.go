@@ -25,7 +25,7 @@ func (m *alternateMapper) Map(err error) *pfwhttp.Error {
 func (m *alternateMapper) Write(w http.ResponseWriter, err error) error { return m.Map(err).Write(w) }
 
 func TestControllerAcceptsAlternateMapper(t *testing.T) {
-	store, err := memory.NewMemoryStore(config.Config{SeedUserName: "Ada"})
+	store, err := memory.NewMemoryStore(config.Config{Seed: config.SeedConfig{UserName: "Ada"}})
 	if err != nil {
 		t.Fatal(err)
 	}

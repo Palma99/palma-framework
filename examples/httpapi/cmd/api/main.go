@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"time"
 
 	"github.com/palma99/palma-framework/examples/httpapi/internal/bootstrap"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
@@ -17,9 +16,13 @@ func main() {
 }
 
 func run() error {
-	server, err := bootstrap.Initialize(config.Config{HTTPAddress: ":8080", SeedUserName: "Ada"})
+	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-	return lifecycle.New(lifecycle.Options{ShutdownTimeout: 5 * time.Second}, httpserver.New(server)).RunSignals()
+	server, err := bootstrap.Initialize(cfg)
+	if err != nil {
+		return err
+	}
+	return lifecycle.New(lifecycle.Options{ShutdownTimeout: cfg.HTTP.ShutdownTimeout}, httpserver.New(server)).RunSignals()
 }

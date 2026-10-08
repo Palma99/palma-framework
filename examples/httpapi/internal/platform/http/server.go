@@ -2,7 +2,6 @@ package apihttp
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/labstack/echo/v5"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
@@ -16,5 +15,5 @@ func Routes(users *userhttp.Controller) *echo.Echo {
 }
 
 func Server(router *echo.Echo, cfg config.Config) *http.Server {
-	return &http.Server{Addr: cfg.HTTPAddress, Handler: router, ReadHeaderTimeout: 5 * time.Second}
+	return &http.Server{Addr: cfg.HTTP.Address, Handler: router, ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout}
 }

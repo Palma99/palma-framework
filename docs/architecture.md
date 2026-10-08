@@ -65,6 +65,10 @@ quel contratto. La [guida lifecycle](lifecycle.md) ne descrive API e limiti.
 mapping degli errori applicativi. Questi helper usano `net/http`, sono opzionali
 e non richiedono un context o un router Palma. La [guida HTTP](http.md) ne mostra l'uso.
 
+`config` carica e valida l'environment in struct Go prima della composizione
+dei servizi. Il valore viene passato come input all'initializer generato.
+La [guida configurazione](configuration.md) ne descrive il contratto.
+
 ## Libertà di organizzazione del codice
 
 La composizione deve identificare i costruttori tramite simboli Go e i binding

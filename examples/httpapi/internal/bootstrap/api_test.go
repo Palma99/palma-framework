@@ -17,7 +17,7 @@ import (
 
 func server(t *testing.T) *http.Server {
 	t.Helper()
-	s, err := bootstrap.Initialize(config.Config{HTTPAddress: "127.0.0.1:0", SeedUserName: "Ada"})
+	s, err := bootstrap.Initialize(config.Config{HTTP: config.HTTPConfig{Address: "127.0.0.1:0"}, Seed: config.SeedConfig{UserName: "Ada"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestInternalErrorDoesNotExposeCause(t *testing.T) {
 }
 
 func TestConstructorValidation(t *testing.T) {
-	s, err := bootstrap.Initialize(config.Config{HTTPAddress: ":8080"})
+	s, err := bootstrap.Initialize(config.Config{HTTP: config.HTTPConfig{Address: ":8080"}})
 	var invalid *domain.ValidationError
 	if s != nil || !errors.As(err, &invalid) || invalid.Field != "name" {
 		t.Fatalf("initialize = %v %v", s, err)

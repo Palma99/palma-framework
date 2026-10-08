@@ -66,3 +66,8 @@ gestire SIGINT e SIGTERM.
 Il [package HTTP](docs/http.md) offre risposte tipizzate, decoder JSON e mapping
 degli errori applicativi indipendenti dal router. L'esempio Echo lo usa attraverso
 un mapper iniettato nel controller.
+
+La [configurazione](docs/configuration.md) carica environment e file `.env` in struct Go con
+default, campi richiesti, parsing tipizzato e validazione. L'esempio HTTP usa
+il prefisso `HTTPAPI_` per indirizzo, timeout e utente iniziale.
+Le impostazioni possono essere raggruppate in sottostruct tramite `envPrefix`.
