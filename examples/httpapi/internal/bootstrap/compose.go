@@ -8,6 +8,7 @@ import (
 
 	pfw "github.com/palma99/palma-framework"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
+	appdb "github.com/palma99/palma-framework/examples/httpapi/internal/platform/database"
 	apihttp "github.com/palma99/palma-framework/examples/httpapi/internal/platform/http"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/memory"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/user/adapter/postgres"
@@ -25,6 +26,7 @@ func Initialize(ctx context.Context, env pfw.Environment, cfg config.Config) (*h
 	return pfw.BuildWithCleanup[*http.Server](
 		pfw.Environments(pfw.Local, pfw.Staging, "uat", pfw.Production),
 		Users,
+		pfw.Constructors(appdb.OpenMainDatabase),
 		pfw.AutoBind(),
 		pfw.Constructors(apihttp.Routes, apihttp.Server),
 	)

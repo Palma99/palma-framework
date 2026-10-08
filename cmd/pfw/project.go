@@ -10,6 +10,54 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+type projectSettings struct {
+	Bootstrap *string `toml:"bootstrap"`
+	Main      *string `toml:"main"`
+	EnvDir    *string `toml:"env_dir"`
+}
+
+func readProjectSettings(root string) (projectSettings, error) {
+	var settings projectSettings
+	path := filepath.Join(root, "pfw.toml")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return settings, nil
+	}
+	if err != nil {
+		return settings, fmt.Errorf("read %s: %w", path, err)
+	}
+	if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&settings); err != nil {
+		return settings, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if settings.EnvDir != nil && strings.TrimSpace(*settings.EnvDir) == "" {
+		return settings, fmt.Errorf("%s: env_dir must be a non-empty directory path", path)
+	}
+	return settings, nil
+}
+
+// Project paths are relative to the module; explicit flag/environment paths
+// retain the usual meaning relative to the caller's working directory.
+func projectEnvironmentDirectory(root, explicit string) (string, error) {
+	if explicit != "" {
+		return filepath.Abs(explicit)
+	}
+	if directory := os.Getenv("PFW_ENV_DIR"); directory != "" {
+		return filepath.Abs(directory)
+	}
+	settings, err := readProjectSettings(root)
+	if err != nil {
+		return "", err
+	}
+	directory := root
+	if settings.EnvDir != nil {
+		directory = *settings.EnvDir
+		if !filepath.IsAbs(directory) {
+			directory = filepath.Join(root, directory)
+		}
+	}
+	return filepath.Abs(directory)
+}
+
 // projectPatterns resolves implicit targets at the module root. Explicit Go
 // package patterns retain their usual meaning relative to the working directory.
 func projectPatterns(kind string, explicit []string) (string, []string, error) {
@@ -32,20 +80,11 @@ func projectPatterns(kind string, explicit []string) (string, []string, error) {
 		}
 		root = parent
 	}
-	settings := struct {
-		Bootstrap *string `toml:"bootstrap"`
-		Main      *string `toml:"main"`
-	}{}
+	settings, err := readProjectSettings(root)
+	if err != nil {
+		return "", nil, err
+	}
 	path := filepath.Join(root, "pfw.toml")
-	data, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
-		return "", nil, fmt.Errorf("read %s: %w", path, err)
-	}
-	if err == nil {
-		if err := toml.NewDecoder(bytes.NewReader(data)).DisallowUnknownFields().Decode(&settings); err != nil {
-			return "", nil, fmt.Errorf("parse %s: %w", path, err)
-		}
-	}
 	pattern, configured := "./internal/bootstrap", settings.Bootstrap
 	if kind == "main" {
 		pattern, configured = "./cmd/app", settings.Main

@@ -6,41 +6,18 @@ import (
 	"errors"
 	"strconv"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/palma99/palma-framework/examples/httpapi/internal/config"
+	appdb "github.com/palma99/palma-framework/examples/httpapi/internal/platform/database"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/user/domain"
 	sqltx "github.com/palma99/palma-framework/transaction/sql"
 )
 
-type connectionError struct {
-	message string
-	cause   error
-}
-
-func (e *connectionError) Error() string { return e.message }
-func (e *connectionError) Unwrap() error { return e.cause }
+type Store struct{ db appdb.MainDB }
 
 //pfw:coconut
-func OpenDatabase(ctx context.Context, cfg config.Config) (*sql.DB, func() error, error) {
-	db, err := sql.Open("pgx", cfg.DB.DSN)
-	if err != nil {
-		return nil, nil, &connectionError{message: "invalid PostgreSQL configuration", cause: err}
-	}
-	startup, cancel := context.WithTimeout(ctx, cfg.DB.ConnectTimeout)
-	defer cancel()
-	if err := db.PingContext(startup); err != nil {
-		return nil, db.Close, &connectionError{message: "cannot connect to PostgreSQL", cause: err}
-	}
-	return db, db.Close, nil
-}
-
-type Store struct{ db *sql.DB }
-
-//pfw:coconut
-func NewPostgresStore(db *sql.DB) *Store { return &Store{db: db} }
+func NewPostgresStore(db appdb.MainDB) *Store { return &Store{db: db} }
 
 func (s *Store) List(ctx context.Context) ([]domain.User, error) {
-	db, err := sqltx.Executor(ctx, s.db)
+	db, err := sqltx.Executor(ctx, s.db.Primary())
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +42,7 @@ func (s *Store) Get(ctx context.Context, id string) (domain.User, error) {
 	if err != nil || key <= 0 {
 		return user, domain.ErrNotFound
 	}
-	db, err := sqltx.Executor(ctx, s.db)
+	db, err := sqltx.Executor(ctx, s.db.Primary())
 	if err != nil {
 		return user, err
 	}
@@ -77,7 +54,7 @@ func (s *Store) Get(ctx context.Context, id string) (domain.User, error) {
 }
 func (s *Store) Create(ctx context.Context, user domain.User) (domain.User, error) {
 	var created domain.User
-	db, err := sqltx.Executor(ctx, s.db)
+	db, err := sqltx.Executor(ctx, s.db.Primary())
 	if err != nil {
 		return created, err
 	}

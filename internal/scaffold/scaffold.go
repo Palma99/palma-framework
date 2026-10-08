@@ -27,7 +27,7 @@ type Template struct{ Name, Description, Entry string }
 func Templates() []Template {
 	return []Template{
 		{"hello-world", "Minimal application that prints Hello, world!", "./cmd/app"},
-		{"api", "Hexagonal HTTP API with in-memory infrastructure", "./cmd/api"},
+		{"api", "HTTP API: memory storage in local, PostgreSQL in staging/prod", "./cmd/api"},
 	}
 }
 
@@ -73,6 +73,15 @@ func Create(options Options) (string, error) {
 	}
 	if !known {
 		return "", fmt.Errorf("unknown template %q; use pfw templates", options.Template)
+	}
+	if options.Environment == "" {
+		options.Environment = "dev"
+		if options.Template == "api" {
+			options.Environment = "local"
+		}
+	}
+	if options.Template == "api" && options.Environment != "local" && options.Environment != "staging" && options.Environment != "prod" {
+		return "", fmt.Errorf("api initial environment must be local, staging or prod")
 	}
 	if options.Template == "api" {
 		if options.Router == "" {
@@ -205,6 +214,11 @@ func moduleFile(options Options) ([]byte, error) {
 	}
 	if err := file.AddRequire(FrameworkModule, version); err != nil {
 		return nil, err
+	}
+	if options.Template == "api" {
+		if err := file.AddRequire("github.com/jackc/pgx/v5", "v5.11.0"); err != nil {
+			return nil, err
+		}
 	}
 	if options.Router != "" {
 		router, err := routerByName(options.Router)

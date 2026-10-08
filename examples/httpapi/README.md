@@ -116,6 +116,10 @@ necessario, `HTTPAPI_DB_CONNECT_TIMEOUT` (default `5s`). La configurazione DB
 al database scelto prima dell'avvio: il framework non applica migrazioni implicite.
 L'adapter usa [pgx tramite database/sql](https://github.com/jackc/pgx/wiki/Getting-started-with-pgx-through-database-sql).
 Le query usano parametri; il cleanup del pool viene eseguito dopo lo shutdown HTTP.
+Il provider `internal/platform/database.OpenMainDatabase` usa il componente
+`database` e fornisce `MainDB` al repository tramite DI. Il repository seleziona
+il primary; la [guida database](../../docs/database.md) mostra anche database
+indipendenti e scelta delle repliche a runtime.
 Postgres conserva i dati e non aggiunge automaticamente l'utente di seed locale.
 
 ```sh

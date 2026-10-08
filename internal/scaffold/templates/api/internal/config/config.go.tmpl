@@ -5,12 +5,27 @@ import (
  "net"
  "os"
  "strconv"
+ "strings"
  "time"
  pfw "github.com/palma99/palma-framework"
  pfwconfig "github.com/palma99/palma-framework/config"
 )
 
-type Config struct { HTTP HTTPConfig `envPrefix:"HTTP_"` }
+type Config struct {
+ HTTP HTTPConfig `envPrefix:"HTTP_"`
+ DB DatabaseConfig `envPrefix:"DB_"`
+}
+
+type DatabaseConfig struct {
+ Driver string `env:"DRIVER" envDefault:"pgx"`
+ DSN string `env:"DSN"`
+ ReplicaDSN string `env:"REPLICA_DSN"`
+ ConnectTimeout time.Duration `env:"CONNECT_TIMEOUT" envDefault:"5s"`
+ MaxOpenConns int `env:"MAX_OPEN_CONNS" envDefault:"20"`
+ MaxIdleConns int `env:"MAX_IDLE_CONNS" envDefault:"5"`
+ ConnMaxLifetime time.Duration `env:"CONN_MAX_LIFETIME" envDefault:"30m"`
+ ConnMaxIdleTime time.Duration `env:"CONN_MAX_IDLE_TIME" envDefault:"5m"`
+}
 
 type HTTPConfig struct {
  Address string `env:"ADDRESS" envDefault:":8080"`
@@ -27,9 +42,34 @@ func (c Config) Validate() error {
  }
  if c.HTTP.ReadHeaderTimeout <= 0 { problems = append(problems, pfwconfig.Invalid("HTTP.ReadHeaderTimeout", "must be positive")) }
  if c.HTTP.ShutdownTimeout <= 0 { problems = append(problems, pfwconfig.Invalid("HTTP.ShutdownTimeout", "must be positive")) }
+ if strings.TrimSpace(c.DB.Driver) == "" { problems = append(problems, pfwconfig.Invalid("DB.Driver", "required")) }
+ if c.DB.ConnectTimeout <= 0 { problems = append(problems, pfwconfig.Invalid("DB.ConnectTimeout", "must be positive")) }
+ if c.DB.MaxOpenConns < 0 { problems = append(problems, pfwconfig.Invalid("DB.MaxOpenConns", "must not be negative")) }
+ if c.DB.MaxIdleConns < 0 || (c.DB.MaxOpenConns > 0 && c.DB.MaxIdleConns > c.DB.MaxOpenConns) {
+  problems = append(problems, pfwconfig.Invalid("DB.MaxIdleConns", "must not be negative or exceed a positive max open connections limit"))
+ }
+ if c.DB.ConnMaxLifetime < 0 { problems = append(problems, pfwconfig.Invalid("DB.ConnMaxLifetime", "must not be negative")) }
+ if c.DB.ConnMaxIdleTime < 0 { problems = append(problems, pfwconfig.Invalid("DB.ConnMaxIdleTime", "must not be negative")) }
+ if strings.TrimSpace(c.DB.ReplicaDSN) != "" && strings.TrimSpace(c.DB.DSN) == "" {
+  problems = append(problems, pfwconfig.Invalid("DB.DSN", "required when a replica is configured"))
+ }
  return errors.Join(problems...)
 }
 
 func Load(env pfw.Environment) (Config, error) {
- return pfwconfig.Load[Config](pfwconfig.Options{Prefix: "APP_", Environment: env, EnvDir: os.Getenv("PFW_ENV_DIR")})
+ directory := os.Getenv("PFW_ENV_DIR")
+ if directory == "" { directory = "env" }
+ return pfwconfig.Load[Config](pfwconfig.Options{Prefix: "APP_", Environment: env, EnvDir: directory})
+}
+
+func (c Config) ValidateEnvironment(env pfw.Environment) error {
+ switch env {
+ case "local":
+  return nil
+ case "staging", "prod":
+  if strings.TrimSpace(c.DB.DSN) == "" { return pfwconfig.Invalid("DB.DSN", "required in staging and prod") }
+  return nil
+ default:
+  return pfwconfig.Invalid("Environment", "must be local, staging or prod")
+ }
 }

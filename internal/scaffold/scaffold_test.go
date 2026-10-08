@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -30,6 +31,7 @@ func TestInvalidOptionsDoNotCreateProject(t *testing.T) {
 		{"unknown template", func(o *Options) { o.Template = "../api" }},
 		{"invalid module", func(o *Options) { o.Module = "bad module" }},
 		{"framework module", func(o *Options) { o.Module = FrameworkModule }},
+		{"unsupported API environment", func(o *Options) { o.Environment = "uat" }},
 		{"invalid environment", func(o *Options) { o.Environment = "../secret" }},
 		{"missing version", func(o *Options) { o.FrameworkVersion = "" }},
 		{"invalid version", func(o *Options) { o.FrameworkVersion = "latest" }},
@@ -37,7 +39,7 @@ func TestInvalidOptionsDoNotCreateProject(t *testing.T) {
 		{"both sources", func(o *Options) { o.FrameworkDir = frameworkRoot(t) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			o := Options{Template: "api", Directory: filepath.Join(t.TempDir(), "app"), Module: "example.com/app", Environment: "uat", FrameworkVersion: "v0.1.0"}
+			o := Options{Template: "api", Directory: filepath.Join(t.TempDir(), "app"), Module: "example.com/app", Environment: "local", FrameworkVersion: "v0.1.0"}
 			tc.change(&o)
 			if _, err := Create(o); err == nil {
 				t.Fatal("invalid options accepted")
@@ -55,7 +57,7 @@ func TestNeverOverwriteExistingDestination(t *testing.T) {
 	if err := os.WriteFile(file, []byte("keep"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.com/app", Environment: "dev", FrameworkVersion: "v0.1.0"}); err == nil {
+	if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.com/app", Environment: "local", FrameworkVersion: "v0.1.0"}); err == nil {
 		t.Fatal("existing destination accepted")
 	}
 	data, err := os.ReadFile(file)
@@ -70,7 +72,7 @@ func TestNeverOverwriteExistingDestination(t *testing.T) {
 
 func TestPublishedVersionAndBundledFiles(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "app")
-	if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.com/app", Environment: "uat", FrameworkVersion: "v0.1.0"}); err != nil {
+	if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.com/app", Environment: "local", FrameworkVersion: "v0.1.0"}); err != nil {
 		t.Fatal(err)
 	}
 	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
@@ -81,10 +83,19 @@ func TestPublishedVersionAndBundledFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if file.Module.Mod.Path != "example.com/app" || file.Require[0].Mod.Version != "v0.1.0" || len(file.Replace) != 0 || len(file.Tool) != 1 {
+	frameworkVersion, driverVersion := "", ""
+	for _, requirement := range file.Require {
+		switch requirement.Mod.Path {
+		case FrameworkModule:
+			frameworkVersion = requirement.Mod.Version
+		case "github.com/jackc/pgx/v5":
+			driverVersion = requirement.Mod.Version
+		}
+	}
+	if file.Module.Mod.Path != "example.com/app" || frameworkVersion != "v0.1.0" || driverVersion != "v5.11.0" || len(file.Replace) != 0 || len(file.Tool) != 1 {
 		t.Fatalf("go.mod: %s", data)
 	}
-	for _, name := range []string{"pfw.toml", ".gitignore", ".env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/controller.go", "internal/item/infrastructure/memory/store.go"} {
+	for _, name := range []string{"pfw.toml", ".gitignore", "env/.env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/controller.go", "internal/item/infrastructure/memory/store.go", "internal/platform/database/database.go", "internal/item/infrastructure/postgres/store.go", "schema.sql", "env/.env.local", "env/.env.staging", "env/.env.prod"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -122,7 +133,11 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 	} {
 		t.Run(tpl.Name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "project with spaces")
-			if _, err := Create(Options{Template: tpl.Template, Router: tpl.Router, Directory: dir, Module: "example.test/starter", Environment: "uat", FrameworkDir: frameworkRoot(t)}); err != nil {
+			env := "local"
+			if tpl.Template == "hello-world" {
+				env = "uat"
+			}
+			if _, err := Create(Options{Template: tpl.Template, Router: tpl.Router, Directory: dir, Module: "example.test/starter", Environment: env, FrameworkDir: frameworkRoot(t)}); err != nil {
 				t.Fatal(err)
 			}
 			if strings.Contains(tpl.Name, "custom-logger") {
@@ -139,12 +154,16 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			hasEcho := false
+			hasEcho, hasPGX := false, false
 			for _, require := range module.Require {
 				hasEcho = hasEcho || require.Mod.Path == "github.com/labstack/echo/v5"
+				hasPGX = hasPGX || require.Mod.Path == "github.com/jackc/pgx/v5"
 			}
 			if hasEcho != (tpl.Router == "echo") {
 				t.Fatalf("unexpected router dependency: %s", data)
+			}
+			if hasPGX != (tpl.Template == "api") {
+				t.Fatalf("unexpected SQL driver dependency: %s", data)
 			}
 			if tpl.Template == "api" {
 				handler, err := os.ReadFile(filepath.Join(dir, "internal/item/infrastructure/http/controller.go"))
@@ -160,7 +179,7 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 				t.Helper()
 				cmd := exec.Command("go", args...)
 				cmd.Dir = commandDir
-				cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "PFW_ENV=uat")
+				cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=", "PFW_ENV="+env)
 				output, err := cmd.CombinedOutput()
 				if err != nil {
 					t.Fatalf("go %v: %v\n%s", args, err, output)
@@ -170,19 +189,55 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 			goCommand("mod", "tidy")
 			goCommand("generate", "./internal/bootstrap")
 			commandDir = filepath.Join(dir, "internal", "bootstrap")
-			goCommand("tool", "pfw", "generate", "-env", "uat")
-			goCommand("tool", "pfw", "generate", "-env", "uat", "-check")
-			goCommand("tool", "pfw", "inspect", "-env", "uat", "-json")
+			goCommand("tool", "pfw", "generate", "-env", env)
+			goCommand("tool", "pfw", "generate", "-env", env, "-check")
+			plan := goCommand("tool", "pfw", "inspect", "-env", env, "-json")
+			if tpl.Template == "api" {
+				assertStorageGraph(t, plan, env)
+			}
 			commandDir = dir
 			goCommand("test", "./...")
 			if tpl.Template == "hello-world" {
-				if output := goCommand("tool", "pfw", "run", "-env", "uat"); strings.TrimSpace(output) != "Hello, world!" {
+				if output := goCommand("tool", "pfw", "run", "-env", env); strings.TrimSpace(output) != "Hello, world!" {
 					t.Fatalf("hello output: %s", output)
 				}
 			} else {
 				goCommand("build", "-o", "api", "./cmd/api")
+				if tpl.Name == "api/stdlib" || tpl.Name == "api/echo" {
+					for _, target := range []string{"staging", "prod"} {
+						env = target
+						goCommand("tool", "pfw", "generate", "-env", env)
+						goCommand("tool", "pfw", "generate", "-env", env, "-check")
+						plan := goCommand("tool", "pfw", "inspect", "-env", env, "-json")
+						assertStorageGraph(t, plan, env)
+						goCommand("test", "./...")
+						goCommand("build", "-o", "api", "./cmd/api")
+					}
+				}
 			}
 		})
+	}
+}
+
+func assertStorageGraph(t *testing.T, plan, env string) {
+	t.Helper()
+	var report struct {
+		Initializers []struct {
+			ConstructionOrder []string `json:"construction_order"`
+		} `json:"initializers"`
+	}
+	if err := json.Unmarshal([]byte(plan), &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Initializers) != 1 {
+		t.Fatalf("initializers: %s", plan)
+	}
+	order := strings.Join(report.Initializers[0].ConstructionOrder, "\n")
+	memory := strings.Contains(order, "memory.NewStore")
+	postgres := strings.Contains(order, "postgres.NewStore")
+	database := strings.Contains(order, "OpenMainDB")
+	if (env == "local" && (!memory || postgres || database)) || (env != "local" && (memory || !postgres || !database)) {
+		t.Fatalf("storage graph for %s: %s", env, order)
 	}
 }
 
@@ -209,10 +264,10 @@ func(m *Mapper)Map(err error)*pfwhttp.Error{Calls.Add(1);return m.ErrorMapper.Ma
 func(m *Mapper)Write(w http.ResponseWriter,err error)error{mapped:=m.Map(err);if mapped==nil{return nil};return mapped.Write(w)}
 `,
 		"internal/bootstrap/custom_mapper_test.go": `package bootstrap_test
-import("net/http/httptest";"testing";"example.test/starter/internal/bootstrap";"example.test/starter/internal/config";"example.test/starter/internal/platform/custommapper")
+import("context";"net/http/httptest";"testing";"example.test/starter/internal/bootstrap";"example.test/starter/internal/config";"example.test/starter/internal/platform/custommapper")
 func TestCustomMapperIsInjected(t *testing.T){
  custommapper.Calls.Store(0)
- server,cleanup,err:=bootstrap.Initialize("uat",config.Config{});if err!=nil{t.Fatal(err)};defer cleanup()
+ server,cleanup,err:=bootstrap.Initialize(context.Background(),"local",config.Config{});if err!=nil{t.Fatal(err)};defer cleanup()
  response:=httptest.NewRecorder();server.HTTPServer().Handler.ServeHTTP(response,httptest.NewRequest("GET","/items/missing",nil))
  if response.Code!=404||custommapper.Calls.Load()!=1{t.Fatalf("custom mapper was not used: status=%d calls=%d",response.Code,custommapper.Calls.Load())}
 }
@@ -255,7 +310,7 @@ func(l *Logger)With(args ...any)logging.Logger{return &Logger{Logger:l.Logger.Wi
 		"internal/bootstrap/custom_logger_test.go": `package bootstrap_test
 import("context";"net/http/httptest";"testing";"time";"example.test/starter/internal/bootstrap";"example.test/starter/internal/config";"example.test/starter/internal/platform/customlogger")
 func TestLoggerBindingReplacesDefault(t *testing.T){
- server,cleanup,err:=bootstrap.Initialize("uat",config.Config{HTTP:config.HTTPConfig{Address:"127.0.0.1:0",ReadHeaderTimeout:time.Second,ShutdownTimeout:time.Second}})
+ server,cleanup,err:=bootstrap.Initialize(context.Background(),"local",config.Config{HTTP:config.HTTPConfig{Address:"127.0.0.1:0",ReadHeaderTimeout:time.Second,ShutdownTimeout:time.Second}})
  if err!=nil{t.Fatal(err)};defer cleanup()
  logger,ok:=server.Logger().(*customlogger.Logger);if !ok{t.Fatalf("logger: %T",server.Logger())}
  if err:=server.Start(context.Background());err!=nil{t.Fatal(err)}

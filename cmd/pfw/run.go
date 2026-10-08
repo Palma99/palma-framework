@@ -42,7 +42,7 @@ func runApplication(ctx context.Context, args []string, stdout, stderr io.Writer
 	flags := flag.NewFlagSet("pfw run", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	envFlag := flags.String("env", "", "environment `name` (or PFW_ENV)")
-	envDir := flags.String("env-dir", "", "dotenv directory `path` (default: module root)")
+	envDir := flags.String("env-dir", "", "dotenv directory `path` (default: PFW_ENV_DIR, pfw.toml env_dir, or module root)")
 	grace := flags.Duration("shutdown-timeout", 30*time.Second, "maximum `duration` after forwarding a shutdown signal")
 	var forwarded []string
 	for i, arg := range args {
@@ -98,11 +98,7 @@ func runApplication(ctx context.Context, args []string, stdout, stderr io.Writer
 			return err
 		}
 	}
-	directory := *envDir
-	if directory == "" {
-		directory = entry.Root
-	}
-	directory, err = filepath.Abs(directory)
+	directory, err := projectEnvironmentDirectory(entry.Root, *envDir)
 	if err != nil {
 		stop()
 		return err

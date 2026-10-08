@@ -49,7 +49,7 @@ func TestProjectPatterns(t *testing.T) {
 }
 
 func TestProjectConfigErrorsAndExplicitOverride(t *testing.T) {
-	for _, config := range []string{"main = [", "main = 42", "main = ''", "bootstrap = '  '", "bootstarp = './wrong'"} {
+	for _, config := range []string{"main = [", "main = 42", "main = ''", "bootstrap = '  '", "bootstarp = './wrong'", "env_dir = ''", "env_dir = 42"} {
 		t.Run(config, func(t *testing.T) {
 			t.Chdir(runFixture(t, "package main\nfunc main(){}\n"))
 			if err := os.WriteFile("pfw.toml", []byte(config), 0600); err != nil {
@@ -68,6 +68,73 @@ func TestProjectConfigErrorsAndExplicitOverride(t *testing.T) {
 				t.Fatalf("explicit override: %q %v %v", dir, patterns, err)
 			}
 		})
+	}
+}
+
+func TestProjectEnvironmentDirectoryPrecedence(t *testing.T) {
+	root := runFixture(t, "package main\nfunc main(){}\n")
+	t.Setenv("PFW_ENV_DIR", "")
+	if err := os.WriteFile(filepath.Join(root, "pfw.toml"), []byte("env_dir = './env'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	subdir := filepath.Join(root, "nested")
+	if err := os.Mkdir(subdir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(subdir)
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ flag, environment, want string }{
+		{"", "", filepath.Join(root, "env")},
+		{"", "custom", filepath.Join(cwd, "custom")},
+		{"flag", "custom", filepath.Join(cwd, "flag")},
+	} {
+		t.Setenv("PFW_ENV_DIR", tc.environment)
+		got, err := projectEnvironmentDirectory(root, tc.flag)
+		if err != nil || got != tc.want {
+			t.Fatalf("directory: %q want %q err=%v", got, tc.want, err)
+		}
+	}
+}
+
+func TestRunConfiguredEnvironmentDirectoryFromSubdirectory(t *testing.T) {
+	root := runFixture(t, `package main
+import("fmt";"os")
+func main(){fmt.Print(os.Getenv("PFW_PROJECT_DOTENV_TEST"))}
+`)
+	t.Setenv("PFW_ENV_DIR", "")
+	t.Setenv("PFW_PROJECT_DOTENV_TEST", "")
+	// Remove the process key to allow dotenv lookup while preserving the parent.
+	if err := os.Unsetenv("PFW_PROJECT_DOTENV_TEST"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"env", "alternate", "nested"} {
+		if err := os.Mkdir(filepath.Join(root, name), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "pfw.toml"), []byte("main = '.'\nenv_dir = './env'\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{"env": "configured", "alternate": "flag"} {
+		if err := os.WriteFile(filepath.Join(root, name, ".env.local"), []byte("PFW_PROJECT_DOTENV_TEST="+value+"\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(filepath.Join(root, "nested"))
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"-env", "local"}, "configured"},
+		{[]string{"-env", "local", "-env-dir", "../alternate"}, "flag"},
+	} {
+		var out, diagnostics bytes.Buffer
+		if err := runApplication(context.Background(), tc.args, &out, &diagnostics); err != nil || out.String() != tc.want {
+			t.Fatalf("run: %q err=%v %s", out.String(), err, diagnostics.String())
+		}
 	}
 }
 

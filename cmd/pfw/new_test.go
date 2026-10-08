@@ -18,10 +18,10 @@ func TestTemplatesAndNewCommand(t *testing.T) {
 	}
 	dir := filepath.Join(t.TempDir(), "app")
 	out.Reset()
-	if err := run([]string{"new", "-template", "api", "-module", "example.com/newapp", "-env", "uat", "-framework-version", "v0.1.0", dir}, &out, &out); err != nil {
+	if err := run([]string{"new", "-template", "api", "-module", "example.com/newapp", "-env", "staging", "-framework-version", "v0.1.0", dir}, &out, &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "go tool pfw run -env uat ./cmd/api") {
+	if !strings.Contains(out.String(), "go tool pfw run -env staging ./cmd/api") {
 		t.Fatalf("next steps: %s", out.String())
 	}
 	if _, err := os.Stat(filepath.Join(dir, "internal/item/domain/item.go")); err != nil {
@@ -50,5 +50,8 @@ func TestNewCommandEchoRouter(t *testing.T) {
 	}
 	if !strings.Contains(string(source), "*echo.Echo") {
 		t.Fatalf("wrong router: %s", source)
+	}
+	if !strings.Contains(out.String(), "go tool pfw run -env local ./cmd/api") {
+		t.Fatalf("default API environment: %s", out.String())
 	}
 }

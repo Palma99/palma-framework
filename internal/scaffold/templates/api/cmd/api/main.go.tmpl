@@ -1,8 +1,11 @@
 package main
 
 import (
+ "context"
  "fmt"
  "os"
+ "os/signal"
+ "syscall"
  pfw "github.com/palma99/palma-framework"
  "github.com/palma99/palma-framework/lifecycle"
  "{{.Module}}/internal/bootstrap"
@@ -16,9 +19,11 @@ func main() {
 func run() error {
  env, err := pfw.EnvironmentFromEnv("{{.Environment}}")
  if err != nil { return err }
+ ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+ defer stop()
  cfg, err := config.Load(env)
  if err != nil { return err }
- server, cleanup, err := bootstrap.Initialize(env, cfg)
+ server, cleanup, err := bootstrap.Initialize(ctx, env, cfg)
  if err != nil { return err }
- return lifecycle.New(lifecycle.Options{ShutdownTimeout: cfg.HTTP.ShutdownTimeout, Cleanup: cleanup}, server).RunSignals()
+ return lifecycle.New(lifecycle.Options{ShutdownTimeout: cfg.HTTP.ShutdownTimeout, Cleanup: cleanup}, server).Run(ctx)
 }

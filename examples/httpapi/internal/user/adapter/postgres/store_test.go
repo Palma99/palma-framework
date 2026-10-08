@@ -5,28 +5,26 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/palma99/palma-framework/database"
+	appdb "github.com/palma99/palma-framework/examples/httpapi/internal/platform/database"
 	"github.com/palma99/palma-framework/examples/httpapi/internal/user/domain"
 	sqltx "github.com/palma99/palma-framework/transaction/sql"
 )
 
 // A database/sql test driver verifies query parameters and row handling without
 // opening a real database or mutating an external service.
-type testConnector struct{ state *queryState }
 type queryState struct {
 	name                       string
 	query                      string
 	args                       []driver.NamedValue
 	begins, commits, rollbacks int
 }
-
-func (c testConnector) Connect(context.Context) (driver.Conn, error) {
-	return testConnection{state: c.state}, nil
-}
-func (c testConnector) Driver() driver.Driver { return testDriver{state: c.state} }
 
 type testDriver struct{ state *queryState }
 
@@ -89,10 +87,29 @@ func (r *testRows) Next(dest []driver.Value) error {
 	return nil
 }
 
+var testDriverID atomic.Uint64
+
+func openTestDatabase(t *testing.T, state *queryState) appdb.MainDB {
+	t.Helper()
+	driverName := fmt.Sprintf("%s-%d", t.Name(), testDriverID.Add(1))
+	sql.Register(driverName, testDriver{state: state})
+	db, cleanup, err := database.Open(context.Background(), database.Config{
+		Primary: database.Endpoint{Driver: driverName},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := cleanup(); err != nil {
+			t.Error(err)
+		}
+	})
+	return appdb.MainDB{Connection: db}
+}
+
 func TestPostgresQueryMappingAndParameters(t *testing.T) {
 	state := &queryState{}
-	db := sql.OpenDB(testConnector{state: state})
-	defer db.Close()
+	db := openTestDatabase(t, state)
 	store := NewPostgresStore(db)
 	name := "Grace'; SELECT 1; --"
 	created, err := store.Create(context.Background(), domain.User{Name: name})
@@ -121,10 +138,9 @@ func TestPostgresQueryMappingAndParameters(t *testing.T) {
 
 func TestStoresParticipateInSharedApplicationTransaction(t *testing.T) {
 	state := &queryState{name: "original"}
-	db := sql.OpenDB(testConnector{state: state})
-	defer db.Close()
+	db := openTestDatabase(t, state)
 	first, second := NewPostgresStore(db), NewPostgresStore(db)
-	manager, err := sqltx.New(db, sqltx.Options{})
+	manager, err := sqltx.New(db.Primary(), sqltx.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

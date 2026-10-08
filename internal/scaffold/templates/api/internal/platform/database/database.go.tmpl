@@ -1,0 +1,42 @@
+package database
+
+import (
+ "context"
+ "strings"
+
+ _ "github.com/jackc/pgx/v5/stdlib"
+ pfwconfig "github.com/palma99/palma-framework/config"
+ pfwdb "github.com/palma99/palma-framework/database"
+ "{{.Module}}/internal/config"
+)
+
+// MainDB identifies this application's database in the generated DI graph.
+// Repositories receive it through their constructors and must not close its pools.
+type MainDB struct { *pfwdb.Connection }
+
+// OpenMainDB is built only when a reachable component requests MainDB.
+//pfw:coconut
+func OpenMainDB(ctx context.Context, cfg config.Config) (MainDB, func() error, error) {
+ if strings.TrimSpace(cfg.DB.DSN) == "" {
+  return MainDB{}, nil, pfwconfig.Invalid("DB.DSN", "required by a component that uses MainDB")
+ }
+ primary := pfwdb.Endpoint{
+  Driver: cfg.DB.Driver,
+  DSN: cfg.DB.DSN,
+  ConnectTimeout: cfg.DB.ConnectTimeout,
+  Pool: &pfwdb.PoolConfig{
+   MaxOpenConns: cfg.DB.MaxOpenConns,
+   MaxIdleConns: cfg.DB.MaxIdleConns,
+   ConnMaxLifetime: cfg.DB.ConnMaxLifetime,
+   ConnMaxIdleTime: cfg.DB.ConnMaxIdleTime,
+  },
+ }
+ options := pfwdb.Config{Primary: primary}
+ if strings.TrimSpace(cfg.DB.ReplicaDSN) != "" {
+  replica := primary
+  replica.DSN = cfg.DB.ReplicaDSN
+  options.Replicas = map[string]pfwdb.Endpoint{"report": replica}
+ }
+ connection, cleanup, err := pfwdb.Open(ctx, options)
+ return MainDB{Connection: connection}, cleanup, err
+}

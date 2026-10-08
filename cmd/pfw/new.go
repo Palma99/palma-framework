@@ -49,7 +49,7 @@ func runNew(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	flags.SetOutput(stderr)
 	name := flags.String("template", "hello-world", "project template `name` (see pfw templates)")
 	module := flags.String("module", "", "Go module `path` used by imports (required)")
-	env := flags.String("env", "dev", "initial environment `name`")
+	env := flags.String("env", "", "initial environment `name` (api: local; hello-world: dev)")
 	router := flags.String("router", "", "API router `name` (default: stdlib; see pfw templates)")
 	version := flags.String("framework-version", "", "published framework `version`")
 	local := flags.String("framework-dir", "", "local framework checkout `path` for development")
@@ -58,6 +58,12 @@ func runNew(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	}
 	if flags.NArg() != 1 {
 		return fmt.Errorf("usage: pfw %s", newUsage)
+	}
+	if *env == "" {
+		*env = "dev"
+		if *name == "api" {
+			*env = "local"
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return err

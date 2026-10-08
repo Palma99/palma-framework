@@ -1,0 +1,68 @@
+package config_test
+
+import (
+ "os"
+ "path/filepath"
+ "strings"
+ "testing"
+ "time"
+ pfw "github.com/palma99/palma-framework"
+
+ pfwconfig "github.com/palma99/palma-framework/config"
+ "{{.Module}}/internal/config"
+)
+
+func TestDatabaseConfiguration(t *testing.T) {
+ load := func(values map[string]string) (config.Config, error) {
+  return pfwconfig.Load[config.Config](pfwconfig.Options{
+   Prefix: "APP_", EnvDir: t.TempDir(), IgnoreMissingEnvFiles: true,
+   Lookup: func(key string) (string, bool) { value, ok := values[key]; return value, ok },
+  })
+ }
+ cfg, err := load(nil)
+ if err != nil { t.Fatal(err) }
+ if cfg.DB.Driver != "pgx" || cfg.DB.DSN != "" || cfg.DB.ReplicaDSN != "" || cfg.DB.ConnectTimeout != 5*time.Second || cfg.DB.MaxOpenConns != 20 || cfg.DB.MaxIdleConns != 5 {
+  t.Fatalf("database defaults: %+v", cfg.DB)
+ }
+ cfg, err = load(map[string]string{"APP_DB_DSN":"primary", "APP_DB_REPLICA_DSN":"report", "APP_DB_MAX_OPEN_CONNS":"0", "APP_DB_MAX_IDLE_CONNS":"0", "APP_DB_CONNECT_TIMEOUT":"2s"})
+ if err != nil || cfg.DB.DSN != "primary" || cfg.DB.ReplicaDSN != "report" || cfg.DB.MaxOpenConns != 0 || cfg.DB.MaxIdleConns != 0 || cfg.DB.ConnectTimeout != 2*time.Second {
+  t.Fatalf("database overrides: %+v %v", cfg.DB, err)
+ }
+ for _, tc := range []struct{ key, value, field string }{
+  {"APP_DB_CONNECT_TIMEOUT", "0s", "DB.ConnectTimeout"},
+  {"APP_DB_MAX_IDLE_CONNS", "21", "DB.MaxIdleConns"},
+  {"APP_DB_CONN_MAX_LIFETIME", "-1s", "DB.ConnMaxLifetime"},
+  {"APP_DB_REPLICA_DSN", "report", "DB.DSN"},
+ } {
+  if _, err := load(map[string]string{tc.key:tc.value}); err == nil || !strings.Contains(err.Error(), tc.field) {
+   t.Fatalf("invalid %s: %v", tc.key, err)
+  }
+ }
+}
+
+func TestEnvironmentConfiguration(t *testing.T) {
+ dir := t.TempDir()
+ for _, name := range []string{".env.local", ".env.staging", ".env.prod"} {
+  data, err := os.ReadFile(filepath.Join("../../env", name))
+  if err != nil { t.Fatal(err) }
+  if err := os.WriteFile(filepath.Join(dir,name),data,0600);err!=nil { t.Fatal(err) }
+ }
+ load := func(env pfw.Environment, overrides map[string]string) (config.Config,error) {
+  return pfwconfig.Load[config.Config](pfwconfig.Options{Prefix:"APP_",Environment:env,EnvDir:dir,Lookup:func(key string)(string,bool){value,ok:=overrides[key];return value,ok}})
+ }
+ // A shared DSN must not accidentally become the staging/prod credential.
+ if err:=os.WriteFile(filepath.Join(dir,".env"),[]byte("APP_DB_DSN=shared\n"),0600);err!=nil { t.Fatal(err) }
+ local,err:=load("local",nil)
+ if err!=nil || local.DB.DSN!="" || local.HTTP.Address!="127.0.0.1:8080" { t.Fatalf("local configuration: %+v %v",local,err) }
+ for _, env:=range []pfw.Environment{"staging","prod"} {
+  if _,err:=load(env,nil);err==nil || !strings.Contains(err.Error(),"DB.DSN") { t.Fatalf("%s accepted a missing DSN: %v",env,err) }
+  if err:=os.WriteFile(filepath.Join(dir,".env."+string(env)+".local"),[]byte("APP_DB_DSN="+string(env)+"-secret\n"),0600);err!=nil { t.Fatal(err) }
+  cfg,err:=load(env,nil)
+  if err!=nil || cfg.DB.DSN!=string(env)+"-secret" { t.Fatalf("%s overrides: %+v %v",env,cfg,err) }
+  want:=10;if env=="prod" {want=40}
+  if cfg.DB.MaxOpenConns!=want { t.Fatalf("%s pool limit: %d",env,cfg.DB.MaxOpenConns) }
+  cfg,err=load(env,map[string]string{"APP_DB_DSN":"process-secret"})
+  if err!=nil || cfg.DB.DSN!="process-secret" { t.Fatalf("%s process precedence: %+v %v",env,cfg,err) }
+ }
+ if _,err:=load("unknown",map[string]string{"APP_DB_DSN":"secret"});err==nil { t.Fatal("unsupported environment accepted") }
+}

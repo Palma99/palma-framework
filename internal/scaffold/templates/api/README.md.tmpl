@@ -8,7 +8,7 @@ use cases and repository port are independent of the router.
 
 ```sh
 go mod tidy
-cp .env.example .env
+cp env/.env.example env/.env
 go tool pfw run -env {{.Environment}}
 ```
 
@@ -19,18 +19,92 @@ curl http://localhost:8080/items
 curl http://localhost:8080/items/1
 ```
 
-The memory implementation is usable immediately. Data is lost on restart. Implement
-`application.Repository` in the persistence infrastructure and add its annotated provider when you need a database. If both implementations
-remain discovered, select one with a binding in `internal/bootstrap/compose.go`.
+The composition declares three environments:
+
+| Environment | Repository | Configuration |
+| --- | --- | --- |
+| `local` | In memory; no SQL pool is opened | `env/.env.local` |
+| `staging` | PostgreSQL | `env/.env.staging` |
+| `prod` | PostgreSQL | `env/.env.prod` |
+
+Local is the default when creating an API project. `-env` chooses the initial
+runtime/generation default from these three names. Data in local is lost on
+restart; staging and prod persist items in their respective databases.
+
+## Environment configuration
+
+Dotenv files live in `env/`. `pfw.toml` sets `env_dir = "./env"` for the CLI;
+the application loader defaults to the same directory when run directly from
+the module root. Override it with `-env-dir` or `PFW_ENV_DIR`.
+
+Copy `env/.env.example` to `env/.env` for common settings. The loader applies `env/.env`,
+`env/.env.<environment>` and `env/.env.<environment>.local` in that order; process
+variables take precedence over every file. The generated environment files
+contain defaults and blank DSNs. They intentionally override any shared DSN so
+staging and prod each require an explicit database configuration.
+
+Supply `APP_DB_DSN` through process variables or an ignored override file:
+
+```dotenv
+# env/.env.staging.local
+APP_DB_DSN=postgres://user:password@staging-host:5432/app
+```
+
+Configure production separately in `env/.env.prod.local` or its process environment.
+The initial pool limits are 10 open / 2 idle connections in staging and 40 open /
+10 idle in prod; adjust them to your database capacity. `env/.env.example` documents
+all timeout and pool settings. The shared `env/.env` and private override files are
+ignored by Git; `env/.env.local`, `env/.env.staging` and `env/.env.prod` are tracked defaults.
+
+Before starting staging or prod, apply `schema.sql` explicitly to the selected
+database with your PostgreSQL tooling. Connection setup does not create tables.
+Then select the environment, which also regenerates its wiring:
+
+```sh
+go tool pfw run -env local
+go tool pfw run -env staging
+go tool pfw run -env prod
+```
+
+A missing DSN in staging/prod fails configuration before opening pools or HTTP.
+
+## Database connection
+
+`internal/item/infrastructure/postgres.Store` already implements
+`application.Repository` and receives `MainDB` through its constructor.
+`internal/platform/database.OpenMainDB` opens the SQL pools; `BuildWithCleanup`
+passes ownership to the lifecycle. Repositories must not close the pools.
+The bundled driver is PostgreSQL pgx. Using another SQL database requires
+adapting the repository SQL as well as registering its driver in the provider.
+
+`db.Primary()` returns the primary `*sql.DB`. Optionally set `APP_DB_REPLICA_DSN`
+to configure a replica named `report`; use `db.Replica("report")` to select it at
+runtime. Selection is explicit: a missing replica returns an error, with no
+automatic fallback. The starter applies the same driver, timeout and pool limits
+to both endpoints; edit the provider for independent settings, additional named
+replicas or separate database groups with distinct Go types.
+
+Queries use the driver's normal API. To participate in an application transaction,
+use `sqltx.Executor(ctx, db.Primary())` from
+`github.com/palma99/palma-framework/transaction/sql`. Selecting a replica inside
+a transaction on the primary returns an error. No ORM, query builder or schema
+migrations are added; connection setup does not create the application's tables.
+
+The initializer receives the startup context, so SIGINT/SIGTERM also cancel a
+database connection attempt. Pool cleanup runs after the HTTP server stops and
+also runs if a later constructor fails.
 
 ## Architecture
 
 - `internal/item/domain`: entities and invariants; no framework or transport imports.
 - `internal/item/application`: use cases and output port; depends on the domain.
 - `internal/item/infrastructure/http`: HTTP infrastructure, DTOs, JSON decoding and error mapping.
-- `internal/item/infrastructure/memory`: concurrency-safe storage infrastructure.
+- `internal/item/infrastructure/memory`: concurrency-safe local storage.
+- `internal/item/infrastructure/postgres`: persistent SQL repository for staging/prod.
+- `env`: environment defaults and private dotenv overrides.
 - `internal/config`: typed configuration with validation and dotenv loading.
 - `internal/platform/http`: router and server configuration.
+- `internal/platform/database`: typed `MainDB` provider, SQL pools and optional replica.
 - `internal/bootstrap`: composition root and generated dependency wiring.
 - `cmd/api`: startup and graceful shutdown through the Palma lifecycle.
 
@@ -71,7 +145,7 @@ The main reports bootstrap errors on stderr and does not create another logger.
 ```sh
 go generate ./internal/bootstrap
 go tool pfw generate -env {{.Environment}} -check
-go test ./...
+PFW_ENV={{.Environment}} go test ./...
 go build -o bin/api ./cmd/api
 PFW_ENV={{.Environment}} ./bin/api
 ```
@@ -80,14 +154,15 @@ The CLI is pinned through the `tool` directive in go.mod. A local framework
 replacement requires that checkout; replace it with a published version when
 sharing the project independently.
 
-Environment names belong to the application. Add names to `pfw.Environments(...)`
-and provider overrides through `pfw.ForEnv(...)` as needed. Generate wiring again
-before building for a different environment. The binary checks that its runtime
-environment matches the generated graph.
+The bindings select Postgres by default and override it with memory through
+`pfw.ForEnv("local", ...)`. These rules belong to this starter's composition;
+the framework itself does not infer storage from environment names. Generate
+wiring again before building for a different environment. The binary rejects
+a runtime environment that differs from its generated graph.
 
-`.env`, `.env.<environment>` and `.env.<environment>.local` are layered in that
-order; process variables win. `.env.example` documents available settings.
-No environment name has implicit production or database semantics.
+The generated tests use `PFW_ENV` (default `local`) to match the selected graph.
+They exercise the actual SQL repository with a local test driver in staging/prod,
+without connecting to external databases.
 
 `pfw.toml` configures the bootstrap and main package paths, relative to the module
 root. `go tool pfw generate`, `inspect` and `run` use these paths when no package

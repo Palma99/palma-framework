@@ -1,0 +1,53 @@
+package postgres
+
+import (
+ "context"
+ "database/sql"
+ "errors"
+ "strconv"
+
+ sqltx "github.com/palma99/palma-framework/transaction/sql"
+ "{{.Module}}/internal/item/application"
+ "{{.Module}}/internal/item/domain"
+ appdb "{{.Module}}/internal/platform/database"
+)
+
+type Store struct { db appdb.MainDB }
+var _ application.Repository = (*Store)(nil)
+
+//pfw:coconut
+func NewStore(db appdb.MainDB) *Store { return &Store{db: db} }
+
+func (s *Store) List(ctx context.Context) ([]domain.Item, error) {
+ executor, err := sqltx.Executor(ctx, s.db.Primary())
+ if err != nil { return nil, err }
+ rows, err := executor.QueryContext(ctx, "SELECT id::text, name FROM pfw_items ORDER BY id")
+ if err != nil { return nil, err }
+ defer rows.Close()
+ items := []domain.Item{}
+ for rows.Next() {
+  var item domain.Item
+  if err := rows.Scan(&item.ID, &item.Name); err != nil { return nil, err }
+  items = append(items, item)
+ }
+ return items, rows.Err()
+}
+
+func (s *Store) Get(ctx context.Context, id string) (domain.Item, error) {
+ var item domain.Item
+ key, err := strconv.ParseInt(id, 10, 64)
+ if err != nil || key <= 0 { return item, domain.ErrNotFound }
+ executor, err := sqltx.Executor(ctx, s.db.Primary())
+ if err != nil { return item, err }
+ err = executor.QueryRowContext(ctx, "SELECT id::text, name FROM pfw_items WHERE id = $1", key).Scan(&item.ID, &item.Name)
+ if errors.Is(err, sql.ErrNoRows) { return domain.Item{}, domain.ErrNotFound }
+ return item, err
+}
+
+func (s *Store) Save(ctx context.Context, item domain.Item) (domain.Item, error) {
+ executor, err := sqltx.Executor(ctx, s.db.Primary())
+ if err != nil { return domain.Item{}, err }
+ var saved domain.Item
+ err = executor.QueryRowContext(ctx, "INSERT INTO pfw_items (name) VALUES ($1) RETURNING id::text, name", item.Name).Scan(&saved.ID, &saved.Name)
+ return saved, err
+}

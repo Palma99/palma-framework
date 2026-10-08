@@ -1,0 +1,110 @@
+package bootstrap_test
+
+import (
+ "context"
+ "database/sql"
+ "database/sql/driver"
+ "errors"
+ "io"
+ "sort"
+ "strconv"
+ "strings"
+ "sync"
+ "sync/atomic"
+ "testing"
+ "time"
+
+ pfw "github.com/palma99/palma-framework"
+ "{{.Module}}/internal/bootstrap"
+ "{{.Module}}/internal/config"
+)
+
+// Tests exercise the real SQL repository and generated wiring without a server DB.
+var opened, closed atomic.Int32
+var errPing = errors.New("test replica unavailable")
+var testData struct { sync.Mutex; next int64; items map[int64]string }
+
+type testDriver struct{}
+func (testDriver) Open(dsn string) (driver.Conn, error) {
+ opened.Add(1)
+ return testConnection{dsn: dsn}, nil
+}
+type testConnection struct { dsn string }
+func (testConnection) Prepare(string) (driver.Stmt, error) { return nil, errors.New("unsupported") }
+func (testConnection) Begin() (driver.Tx, error) { return nil, errors.New("unsupported") }
+func (testConnection) Close() error { closed.Add(1); return nil }
+func (c testConnection) Ping(ctx context.Context) error {
+ if err := ctx.Err(); err != nil { return err }
+ if c.dsn == "fail" { return errPing }
+ return nil
+}
+func (testConnection) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
+ if err := ctx.Err(); err != nil { return nil, err }
+ testData.Lock(); defer testData.Unlock()
+ rows := &testRows{}
+ switch {
+ case strings.HasPrefix(query, "INSERT INTO pfw_items"):
+  testData.next++
+  name := args[0].Value.(string)
+  testData.items[testData.next] = name
+  rows.values = [][]driver.Value{ {strconv.FormatInt(testData.next, 10), name} }
+ case strings.Contains(query, "WHERE id = $1"):
+  id := args[0].Value.(int64)
+  if name, ok := testData.items[id]; ok { rows.values = [][]driver.Value{ {strconv.FormatInt(id, 10), name} } }
+ case query == "SELECT id::text, name FROM pfw_items ORDER BY id":
+  ids := make([]int64, 0, len(testData.items))
+  for id := range testData.items { ids = append(ids, id) }
+  sort.Slice(ids, func(i,j int) bool { return ids[i] < ids[j] })
+  for _, id := range ids { rows.values = append(rows.values, []driver.Value{strconv.FormatInt(id,10),testData.items[id]}) }
+ default:
+  return nil, errors.New("unexpected SQL")
+ }
+ return rows, nil
+}
+type testRows struct { values [][]driver.Value; index int }
+func (*testRows) Columns() []string { return []string{"id", "name"} }
+func (*testRows) Close() error { return nil }
+func (r *testRows) Next(dest []driver.Value) error {
+ if r.index >= len(r.values) { return io.EOF }
+ copy(dest, r.values[r.index]); r.index++; return nil
+}
+func init() { sql.Register("scaffold-test", testDriver{}) }
+
+func testSQLConfig() config.DatabaseConfig {
+ opened.Store(0); closed.Store(0)
+ testData.Lock(); testData.next=0; testData.items=map[int64]string{}; testData.Unlock()
+ return config.DatabaseConfig{Driver:"scaffold-test",DSN:"primary",ReplicaDSN:"report",ConnectTimeout:time.Second,MaxOpenConns:2,MaxIdleConns:1}
+}
+
+func TestDatabaseSelectionAndCleanup(t *testing.T) {
+ env, err := pfw.EnvironmentFromEnv("local")
+ if err != nil { t.Fatal(err) }
+ cfg := config.Config{DB:testSQLConfig()}
+ _, cleanup, err := bootstrap.Initialize(context.Background(),env,cfg)
+ if err != nil { t.Fatal(err) }
+ t.Cleanup(func(){ _ = cleanup() })
+ want := int32(2)
+ if env == "local" { want = 0 }
+ if opened.Load()!=want || closed.Load()!=0 { t.Fatalf("%s pools: opened=%d closed=%d",env,opened.Load(),closed.Load()) }
+ if err:=cleanup();err!=nil { t.Fatal(err) }
+ if err:=cleanup();err!=nil { t.Fatal(err) }
+ if closed.Load()!=want { t.Fatalf("%s cleanup: %d",env,closed.Load()) }
+}
+
+func TestDatabaseStartupFailure(t *testing.T) {
+ env, err := pfw.EnvironmentFromEnv("local")
+ if err != nil { t.Fatal(err) }
+ cfg := config.Config{DB:testSQLConfig()}
+ cfg.DB.ReplicaDSN="fail"
+ server, cleanup, err := bootstrap.Initialize(context.Background(),env,cfg)
+ if env=="local" {
+  if err!=nil { t.Fatal(err) };defer cleanup()
+  if opened.Load()!=0 { t.Fatal("local opened a SQL pool") }
+  return
+ }
+ if server!=nil || cleanup!=nil || !errors.Is(err,errPing) || opened.Load()!=2 || closed.Load()!=2 {
+  t.Fatalf("partial initialization: opened=%d closed=%d err=%v",opened.Load(),closed.Load(),err)
+ }
+ cfg.DB.DSN=""
+ if _,_,err:=bootstrap.Initialize(context.Background(),env,cfg);err==nil || !strings.Contains(err.Error(),"DB.DSN") { t.Fatalf("missing DSN: %v",err) }
+}

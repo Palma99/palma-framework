@@ -1,18 +1,22 @@
 package bootstrap_test
 
 import (
+ "context"
  "encoding/json"
  "net/http"
  "net/http/httptest"
  "strings"
  "testing"
  "time"
+ pfw "github.com/palma99/palma-framework"
  "{{.Module}}/internal/bootstrap"
  "{{.Module}}/internal/config"
 )
 
 func TestAPI(t *testing.T) {
- server, cleanup, err := bootstrap.Initialize("{{.Environment}}", config.Config{HTTP: config.HTTPConfig{Address: ":8080", ReadHeaderTimeout: time.Second, ShutdownTimeout: time.Second}})
+ env, err := pfw.EnvironmentFromEnv("local")
+ if err != nil { t.Fatal(err) }
+ server, cleanup, err := bootstrap.Initialize(context.Background(), env, config.Config{DB: testSQLConfig(), HTTP: config.HTTPConfig{Address: ":8080", ReadHeaderTimeout: time.Second, ShutdownTimeout: time.Second}})
  if err != nil { t.Fatal(err) }
  t.Cleanup(func(){ if err := cleanup(); err != nil { t.Error(err) } })
  request := func(method, path, body string) *httptest.ResponseRecorder {

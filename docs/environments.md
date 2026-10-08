@@ -49,6 +49,10 @@ Ultimo file prevale sui precedenti; l'environment del processo prevale sui file;
 i default delle struct rimangono l'ultima sorgente. I file assenti sono opzionali,
 ma errori di lettura o sintassi interrompono l'avvio. La CLI costruisce soltanto
 l'environment del processo figlio: non modifica quello del chiamante.
+`pfw.toml` può impostare `env_dir = "./env"`, relativo alla root del modulo.
+La precedenza per la directory è `-env-dir`, `PFW_ENV_DIR`, `env_dir` in TOML,
+poi la root del modulo.
+
 `PFW_ENV` e `PFW_ENV_DIR` sono selettori riservati, impostati dal comando e non
 sovrascrivibili tramite dotenv. I valori non vengono stampati dalla CLI.
 

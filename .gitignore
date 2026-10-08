@@ -2,6 +2,9 @@
 .env.*
 !.env.example
 !.env.example.tmpl
+!/internal/scaffold/templates/api/env/.env.local.tmpl
+!/internal/scaffold/templates/api/env/.env.staging.tmpl
+!/internal/scaffold/templates/api/env/.env.prod.tmpl
 /bin/
 /dist/
 .DS_Store

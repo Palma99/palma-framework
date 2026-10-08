@@ -7,7 +7,8 @@ pfw templates
 ```
 
 - `hello-world`: applicazione minimale che stampa `Hello, world!`, con composition root.
-- `api`: API esagonale con router a scelta, un caso d'uso di esempio e storage in memoria.
+- `api`: API esagonale con router a scelta, storage in memoria in `local` e
+  repository PostgreSQL in `staging` e `prod`.
 
 ## Dal checkout del framework
 
@@ -16,7 +17,7 @@ go run ./cmd/pfw new -template hello-world \
   -module example.com/hello -env dev -framework-dir . /tmp/palma-hello
 
 go run ./cmd/pfw new -template api \
-  -module example.com/myapi -env uat -framework-dir . /tmp/palma-api
+  -module example.com/myapi -env local -framework-dir . /tmp/palma-api
 ```
 
 La directory di destinazione deve essere nuova e il suo parent deve esistere.
@@ -26,8 +27,9 @@ progetto parziale creato dal comando. Non vengono installate dipendenze né avvi
 processi durante la creazione.
 
 `-module` è il module path della tua applicazione. `-env` sceglie il primo ambiente
-da dichiarare nella composizione e ha default `dev`. Puoi aggiungere altri nomi
-in `pfw.Environments(...)` dopo la creazione.
+usato per avvio e generazione. Per `api` il default è `local` e sono dichiarati
+`local`, `staging` e `prod`; `-env` deve scegliere uno di questi tre nomi. Per
+`hello-world` il default resta `dev` e il nome è libero.
 
 `-framework-dir` scrive nel nuovo `go.mod` un `replace` assoluto al checkout locale.
 Il progetto segue così le modifiche locali del framework. Quel percorso deve
@@ -54,7 +56,7 @@ Il template `api` accetta `-router stdlib` (default) oppure `-router echo`:
 
 ```sh
 go run ./cmd/pfw new -template api -router echo \
-  -module example.com/echoapi -env uat -framework-dir . /tmp/palma-echo-api
+  -module example.com/echoapi -env local -framework-dir . /tmp/palma-echo-api
 ```
 
 `stdlib` usa `net/http`; `echo` usa Echo v5 e ne aggiunge la dipendenza esplicita
@@ -79,8 +81,8 @@ Per l'API creata sopra:
 ```sh
 cd /tmp/palma-api
 go mod tidy
-cp .env.example .env
-go tool pfw run -env uat
+cp env/.env.example env/.env
+go tool pfw run -env local
 ```
 
 Per hello world:
@@ -96,10 +98,10 @@ le operazioni, il progetto include anche una direttiva `go:generate`:
 
 ```sh
 go generate ./internal/bootstrap
-go tool pfw generate -env uat -check
+go tool pfw generate -env local -check
 go test ./...
 go build -o bin/api ./cmd/api
-PFW_ENV=uat ./bin/api
+PFW_ENV=local ./bin/api
 ```
 
 Cambiare ambiente richiede rigenerare e ricompilare. La direttiva `go:generate`
@@ -114,18 +116,62 @@ internal/
   bootstrap/                 composizione DI e wiring generato
   config/                    configurazione tipizzata e validazione
   platform/http/             router e server
+  platform/database/         provider MainDB, primary e replica opzionale
   item/
     domain/                  entità e invarianti
     application/             casi d'uso e porta Repository
     infrastructure/
       http/                  handler, DTO e mapping degli errori
-      memory/                implementazione in memoria della porta
+      memory/                implementazione locale in memoria
+      postgres/              repository SQL per staging/prod
 ```
 
 Dominio e application non importano Palma né il trasporto HTTP. Le implementazioni dell'infrastruttura
 dipendono dalle porte dell'application; il composition root sceglie e collega
 le implementazioni. Lo storage memory è pronto all'uso e perde i dati al riavvio.
-Per aggiungere persistenza, implementare `application.Repository` nell'infrastruttura e sostituire il binding nella composizione.
+Il composition root seleziona `memory.Store` in `local` e `postgres.Store` in
+`staging` e `prod`, tramite binding espliciti e `ForEnv("local", ...)`. Il
+repository SQL riceve `database.MainDB` nel costruttore; il provider annotato
+`internal/platform/database.OpenMainDB` è incluso nella discovery. In locale
+il provider non è raggiungibile e non viene aperto alcun pool SQL.
+
+I file dotenv risiedono nella cartella `env/`, configurata con `env_dir = "./env"`
+in `pfw.toml`. Anche il loader applicativo usa `env/` come default se il binario
+viene avviato dalla root del modulo. I progetti includono `env/.env.local`, `env/.env.staging` e `env/.env.prod` con default
+versionabili e DSN vuoti. Dopo i valori comuni di `env/.env`, il loader legge il
+file dell'ambiente e infine `env/.env.<ambiente>.local`; le variabili del processo
+prevalgono su tutti i file. Le impostazioni di staging/prod azzerano il DSN
+comune: fornire `APP_DB_DSN` separatamente con variabili del processo o nei file
+ignorati `env/.env.staging.local` e `env/.env.prod.local`. Il DSN è obbligatorio fuori da
+`local`; la configurazione fallisce prima dell'avvio in sua assenza.
+
+PostgreSQL pgx è incluso e registrato dal provider. Prima dell'avvio SQL,
+applicare esplicitamente `schema.sql` al database selezionato: non ci sono
+migrazioni automatiche. Gli ambienti staging e prod hanno limiti iniziali del
+pool rispettivamente di 10/2 e 40/10 connessioni aperte/inattive, personalizzabili
+con `APP_DB_*`. `env/.env.example` documenta tutte le opzioni.
+
+`APP_DB_REPLICA_DSN` configura una replica opzionale `report`; il repository
+può selezionare `db.Primary()` oppure `db.Replica("report")` a runtime. I metodi
+inclusi nello starter usano il primary. Il cleanup è gestito da `BuildWithCleanup`
+e dal lifecycle; il context di avvio permette di cancellare connessione e ping.
+Vedi la [guida database](database.md).
+
+```sh
+go tool pfw run -env local
+go tool pfw run -env staging
+go tool pfw run -env prod
+```
+
+Cambiare ambiente richiede rigenerare il wiring. I test generati usano `PFW_ENV`
+(default `local`); per verificare il grafo staging, per esempio:
+
+```sh
+go tool pfw generate -env staging
+PFW_ENV=staging go test ./...
+```
+
+I test SQL usano un driver locale e non richiedono database esterni.
 
 L'API offre `GET /health`, `GET /items`, `GET /items/{id}` e `POST /items`.
 Include decoding JSON con limiti e rifiuto dei campi sconosciuti, validazione
@@ -170,17 +216,20 @@ esplicito se rimangono disponibili più mapper compatibili.
 ```toml
 bootstrap = "./internal/bootstrap"
 main = "./cmd/api"
+env_dir = "./env"
 ```
 
 Il template hello-world usa `main = "./cmd/app"`. Puoi modificare questi
-percorsi quando sposti i package. Sono directory di package Go, relative alla
-root del modulo, non nomi di singoli file `.go`.
+percorsi quando sposti i package. I percorsi `main` e `bootstrap` sono directory di package Go relative alla
+root del modulo, non nomi di singoli file `.go`. `env_dir` è la directory dei
+file dotenv, anch’essa relativa al modulo. Per `run`, la precedenza è
+`-env-dir`, `PFW_ENV_DIR`, `env_dir` in TOML, poi la root del modulo.
 
 ```sh
-go tool pfw generate -env dev
-go tool pfw inspect
-go tool pfw run -env dev
-go tool pfw run -env dev -- -verbose
+go tool pfw generate -env local
+go tool pfw inspect -env local
+go tool pfw run -env local
+go tool pfw run -env local -- -verbose
 ```
 
 Se ometti i package, la CLI cerca il `go.mod` più vicino risalendo dalla directory

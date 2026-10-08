@@ -3,15 +3,21 @@
 package bootstrap
 
 import (
+ "context"
  pfw "github.com/palma99/palma-framework"
  "{{.Module}}/internal/config"
+ "{{.Module}}/internal/item/application"
+ "{{.Module}}/internal/item/infrastructure/memory"
+ "{{.Module}}/internal/item/infrastructure/postgres"
  "github.com/palma99/palma-framework/transport/httpserver"
 )
 
-func Initialize(env pfw.Environment, cfg config.Config) (*httpserver.Server, func() error, error) {
+func Initialize(ctx context.Context, env pfw.Environment, cfg config.Config) (*httpserver.Server, func() error, error) {
  return pfw.BuildWithCleanup[*httpserver.Server](
-  pfw.Environments("{{.Environment}}"),
+  pfw.Environments("local", "staging", "prod"),
   pfw.Discover("../..."),
+  pfw.Bind[application.Repository, *postgres.Store](),
+  pfw.ForEnv("local", pfw.Bind[application.Repository, *memory.Store]()),
   pfw.AutoBind(),
  )
 }

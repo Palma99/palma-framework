@@ -31,7 +31,7 @@ pfw version
 pfw new -template api -router echo -module example.com/myapi ./myapi
 cd myapi
 go mod tidy
-go tool pfw run -env dev
+go tool pfw run -env local
 ```
 
 La CLI installata deve essere nel `PATH`. Per un'applicazione minimale scegliere
@@ -58,11 +58,13 @@ Per creare un progetto esterno da uno skeleton incluso nella CLI:
 ```sh
 go run ./cmd/pfw templates
 go run ./cmd/pfw new -template api -module example.com/myapi \
-  -env dev -framework-dir . /tmp/palma-api
+  -env local -framework-dir . /tmp/palma-api
 ```
 
 Sono disponibili `hello-world` e `api` (architettura esagonale).
 Per `api`, `-router stdlib` è il default; `-router echo` genera la variante Echo v5.
+Lo scaffold configura `local` (memoria), `staging` e `prod` (PostgreSQL), con
+file di configurazione distinti e `local` come ambiente iniziale predefinito.
 La [guida ai template](docs/scaffolding.md) descrive creazione, dipendenze e avvio.
 
 Richiede Go 1.26 o successivo.
@@ -135,6 +137,12 @@ binding specifici e wiring generato per un ambiente alla volta:
 go run ./cmd/pfw run -env local ./examples/httpapi/cmd/api
 go run ./cmd/pfw inspect -env production ./examples/httpapi/internal/bootstrap
 ```
+
+## Connessioni al database
+
+Il [componente database](docs/database.md) gestisce pool SQL, primary e repliche
+nominate, apertura con timeout e cleanup. I repository ricevono gruppi tipizzati
+tramite DI e selezionano esplicitamente il pool, anche a runtime.
 
 ## Transazioni applicative
 
