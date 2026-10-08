@@ -1,0 +1,12 @@
+package application
+
+import "fmt"
+
+type App struct{}
+
+func NewApp() *App { return &App{} }
+
+func (*App) Run() error {
+ _, err := fmt.Println("Hello, world!")
+ return err
+}

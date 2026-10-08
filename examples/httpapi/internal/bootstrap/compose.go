@@ -23,7 +23,7 @@ var Users = pfw.Module(
 
 func Initialize(ctx context.Context, env pfw.Environment, cfg config.Config) (*http.Server, func() error, error) {
 	return pfw.BuildWithCleanup[*http.Server](
-		pfw.Environments(pfw.Local, "uat", pfw.Production),
+		pfw.Environments(pfw.Local, pfw.Staging, "uat", pfw.Production),
 		Users,
 		pfw.Constructors(apihttp.Routes, apihttp.Server),
 	)

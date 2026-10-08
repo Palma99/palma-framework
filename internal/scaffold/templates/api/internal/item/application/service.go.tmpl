@@ -1,0 +1,26 @@
+package application
+
+import (
+ "context"
+ "{{.Module}}/internal/item/domain"
+)
+
+// Repository is an output port owned by the application.
+type Repository interface {
+ List(context.Context) ([]domain.Item, error)
+ Get(context.Context, string) (domain.Item, error)
+ Save(context.Context, domain.Item) (domain.Item, error)
+}
+
+type Service struct { repository Repository }
+
+func NewService(repository Repository) *Service { return &Service{repository: repository} }
+
+func (s *Service) List(ctx context.Context) ([]domain.Item, error) { return s.repository.List(ctx) }
+func (s *Service) Get(ctx context.Context, id string) (domain.Item, error) { return s.repository.Get(ctx, id) }
+func (s *Service) Create(ctx context.Context, name string) (domain.Item, error) {
+ if err := ctx.Err(); err != nil { return domain.Item{}, err }
+ item, err := domain.New(name)
+ if err != nil { return domain.Item{}, err }
+ return s.repository.Save(ctx, item)
+}

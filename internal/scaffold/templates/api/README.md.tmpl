@@ -1,0 +1,58 @@
+# {{.Module}}
+
+Hexagonal API starter using Palma with the {{.Router}} router. Requires Go 1.26 or newer.
+
+The router was selected when creating the project. HTTP-specific code lives in
+`internal/item/infrastructure/http` and `internal/platform/http`; the domain,
+use cases and repository port are independent of the router.
+
+```sh
+go mod tidy
+cp .env.example .env
+go tool pfw run -env {{.Environment}} ./cmd/api
+```
+
+```sh
+curl http://localhost:8080/health
+curl -H 'Content-Type: application/json' -d '{"name":"First item"}' http://localhost:8080/items
+curl http://localhost:8080/items
+curl http://localhost:8080/items/1
+```
+
+The memory implementation is usable immediately. Data is lost on restart. Implement
+`application.Repository` in the persistence infrastructure and update the binding in
+`internal/bootstrap/compose.go` when you need a database.
+
+## Architecture
+
+- `internal/item/domain`: entities and invariants; no framework or transport imports.
+- `internal/item/application`: use cases and output port; depends on the domain.
+- `internal/item/infrastructure/http`: HTTP infrastructure, DTOs, JSON decoding and error mapping.
+- `internal/item/infrastructure/memory`: concurrency-safe storage infrastructure.
+- `internal/config`: typed configuration with validation and dotenv loading.
+- `internal/platform/http`: router and server configuration.
+- `internal/bootstrap`: composition root and generated dependency wiring.
+- `cmd/api`: startup and graceful shutdown through the Palma lifecycle.
+
+## Wiring and environments
+
+```sh
+go generate ./internal/bootstrap
+go tool pfw generate -env {{.Environment}} -check ./internal/bootstrap
+go test ./...
+go build -o bin/api ./cmd/api
+PFW_ENV={{.Environment}} ./bin/api
+```
+
+The CLI is pinned through the `tool` directive in go.mod. A local framework
+replacement requires that checkout; replace it with a published version when
+sharing the project independently.
+
+Environment names belong to the application. Add names to `pfw.Environments(...)`
+and provider overrides through `pfw.ForEnv(...)` as needed. Generate wiring again
+before building for a different environment. The binary checks that its runtime
+environment matches the generated graph.
+
+`.env`, `.env.<environment>` and `.env.<environment>.local` are layered in that
+order; process variables win. `.env.example` documents available settings.
+No environment name has implicit production or database semantics.

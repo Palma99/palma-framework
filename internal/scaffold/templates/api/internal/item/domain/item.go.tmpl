@@ -1,0 +1,18 @@
+package domain
+
+import (
+ "errors"
+ "strings"
+ "unicode/utf8"
+)
+
+type Item struct { ID string; Name string }
+
+var ErrInvalidName = errors.New("name must contain between 1 and 100 non-blank characters")
+var ErrNotFound = errors.New("item not found")
+
+func New(name string) (Item, error) {
+ name = strings.TrimSpace(name)
+ if name == "" || utf8.RuneCountInString(name) > 100 { return Item{}, ErrInvalidName }
+ return Item{Name: name}, nil
+}

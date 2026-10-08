@@ -31,7 +31,7 @@ Il modulo `Users` usa `pfw.Discover("../user/...")`: i costruttori di storage,
 servizio e controller sono marcati `//pfw:coconut`. Router e server restano
 registrati manualmente. `Users` abilita `pfw.AutoBind()` per il mapper HTTP;
 il repository viene selezionato con un binding esplicito, diverso per local
-rispetto a staging/production. Il codice applicativo dipende dall'interfaccia.
+rispetto a staging/uat/production. Il codice applicativo dipende dall'interfaccia.
 
 Una nuova funzionalità può affiancare `internal/user`, con i propri servizi
 e adapter. `platform/http` raccoglie le route; `bootstrap` raccoglie i provider.
@@ -107,10 +107,10 @@ la traduzione degli errori di dominio rimane configurata nell'adapter HTTP.
 Una sola discovery include i provider della funzionalità. Il binding comune
 di `application.Repository` seleziona Postgres; `ForEnv("local", Bind[...])`
 seleziona memory. `generate -env local` genera soltanto il grafo locale;
-per staging/production occorre rigenerare il wiring con il relativo `-env`.
+per staging/uat/production occorre rigenerare il wiring con il relativo `-env`.
 La connessione DB non viene aperta in locale.
 
-In staging/production impostare `HTTPAPI_DB_DSN` (DSN pgx/PostgreSQL) e, se
+In staging/uat/production impostare `HTTPAPI_DB_DSN` (DSN pgx/PostgreSQL) e, se
 necessario, `HTTPAPI_DB_CONNECT_TIMEOUT` (default `5s`). La configurazione DB
 è obbligatoria soltanto fuori da local. Creare la tabella applicando `schema.sql`
 al database scelto prima dell'avvio: il framework non applica migrazioni implicite.

@@ -1,0 +1,46 @@
+package itemhttp
+
+import (
+ "log"
+ "net/http"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ "{{.Module}}/internal/item/application"
+)
+
+type Handler struct { service *application.Service; errors *pfwhttp.Mapper }
+
+func NewHandler(service *application.Service) *Handler {
+ return &Handler{service: service, errors: newErrorMapper()}
+}
+
+func (h *Handler) Register(mux *http.ServeMux) {
+ mux.HandleFunc("GET /items", h.list)
+ mux.HandleFunc("GET /items/{id}", h.get)
+ mux.HandleFunc("POST /items", h.create)
+}
+
+func report(err error) { if err != nil { log.Printf("HTTP response: %v", err) } }
+func (h *Handler) fail(w http.ResponseWriter, err error) {
+ mapped := h.errors.Map(err)
+ if mapped.Status >= 500 { log.Printf("request failed: %v", err) }
+ report(mapped.Write(w))
+}
+func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
+ items, err := h.service.List(r.Context())
+ if err != nil { h.fail(w, err); return }
+ result := make([]itemResponse, 0, len(items))
+ for _, item := range items { result = append(result, response(item)) }
+ report(pfwhttp.OK(result).Write(w))
+}
+func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
+ item, err := h.service.Get(r.Context(), r.PathValue("id"))
+ if err != nil { h.fail(w, err); return }
+ report(pfwhttp.OK(response(item)).Write(w))
+}
+func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
+ input, err := pfwhttp.DecodeJSON[struct { Name string `json:"name"` }](r, pfwhttp.DecodeOptions{})
+ if err != nil { h.fail(w, err); return }
+ item, err := h.service.Create(r.Context(), input.Name)
+ if err != nil { h.fail(w, err); return }
+ report(pfwhttp.Created("/items/"+item.ID, response(item)).Write(w))
+}

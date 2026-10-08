@@ -1,0 +1,32 @@
+name: Prepare release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.x'
+          cache-dependency-path: go.sum
+      - name: Verify
+        run: bash scripts/verify.sh
+      - name: Package CLI
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: bash scripts/package-release.sh "$RELEASE_VERSION"
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_VERSION" dist/"$RELEASE_VERSION"/* \
+            --verify-tag --draft --title "Palma $RELEASE_VERSION" \
+            --notes-file CHANGELOG.md

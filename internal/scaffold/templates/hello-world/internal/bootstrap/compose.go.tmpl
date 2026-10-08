@@ -1,0 +1,15 @@
+//go:build pfw_inject
+
+package bootstrap
+
+import (
+ pfw "github.com/palma99/palma-framework"
+ "{{.Module}}/internal/application"
+)
+
+func Initialize(env pfw.Environment) (*application.App, error) {
+ return pfw.Build[*application.App](
+  pfw.Environments("{{.Environment}}"),
+  pfw.Constructors(application.NewApp),
+ )
+}

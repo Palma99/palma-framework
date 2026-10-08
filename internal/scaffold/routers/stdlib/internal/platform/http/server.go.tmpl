@@ -1,0 +1,22 @@
+package apihttp
+
+import (
+ "net/http"
+ "log"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ "{{.Module}}/internal/config"
+ itemhttp "{{.Module}}/internal/item/infrastructure/http"
+)
+
+func Routes(items *itemhttp.Handler) *http.ServeMux {
+ mux := http.NewServeMux()
+ mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+  if err := pfwhttp.OK(map[string]string{"status":"ok"}).Write(w); err != nil { log.Printf("health response: %v", err) }
+ })
+ items.Register(mux)
+ return mux
+}
+
+func Server(mux *http.ServeMux, cfg config.Config) *http.Server {
+ return &http.Server{Addr: cfg.HTTP.Address, Handler: mux, ReadHeaderTimeout: cfg.HTTP.ReadHeaderTimeout}
+}

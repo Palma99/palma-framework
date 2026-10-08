@@ -5,9 +5,9 @@ Focalizzato su backend e API, con dependency injection generata a build time.
 HTTP è il primo trasporto previsto; il nucleo resta indipendente dal protocollo
 per consentire future integrazioni, per esempio gRPC.
 
-Stato attuale: generatore DI con cleanup delle risorse, CLI `pfw` e API HTTP
-di esempio, lifecycle applicativo e adapter per server `net/http`.
-Gli adapter dedicati ad altre librerie HTTP non sono ancora inclusi.
+Prima release in preparazione: **v0.1.0**, con API in evoluzione e licenza MIT.
+Include generatore DI, cleanup delle risorse, CLI `pfw`, configurazione,
+lifecycle e skeleton API con router stdlib o Echo v5.
 Il nome usato nel codice è `pfw`.
 
 ## Principi
@@ -21,7 +21,46 @@ Il nome usato nel codice è `pfw`.
 - Libreria HTTP a scelta dell'applicazione: standard library, Echo, Chi, Gin
   o altro, con integrazioni opzionali previste dall'architettura.
 
+## Installazione e primo progetto
+
+Richiede Go 1.26 o successivo. Dopo la pubblicazione del tag `v0.1.0`:
+
+```sh
+go install github.com/palma99/palma-framework/cmd/pfw@v0.1.0
+pfw version
+pfw new -template api -router echo -module example.com/myapi ./myapi
+cd myapi
+go mod tidy
+go tool pfw run -env dev ./cmd/api
+```
+
+La CLI installata deve essere nel `PATH`. Per un'applicazione minimale scegliere
+`-template hello-world`; per l'API standard scegliere `-router stdlib`.
+Il progetto include la CLI come tool Go e fissa la stessa versione della libreria.
+
+Per usare soltanto la libreria in un modulo esistente:
+
+```sh
+go get github.com/palma99/palma-framework@v0.1.0
+```
+
+Fino alla pubblicazione, usare il checkout locale come descritto sotto.
+La [guida al rilascio](docs/releasing.md) include verifiche, packaging e pubblicazione.
+La [licenza MIT](LICENSE) copre il codice del framework.
+
 ## Sviluppo
+
+Per creare un progetto esterno da uno skeleton incluso nella CLI:
+
+```sh
+go run ./cmd/pfw templates
+go run ./cmd/pfw new -template api -module example.com/myapi \
+  -env dev -framework-dir . /tmp/palma-api
+```
+
+Sono disponibili `hello-world` e `api` (architettura esagonale).
+Per `api`, `-router stdlib` è il default; `-router echo` genera la variante Echo v5.
+La [guida ai template](docs/scaffolding.md) descrive creazione, dipendenze e avvio.
 
 Richiede Go 1.26 o successivo.
 

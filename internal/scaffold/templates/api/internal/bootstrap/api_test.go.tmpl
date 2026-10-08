@@ -1,0 +1,44 @@
+package bootstrap_test
+
+import (
+ "encoding/json"
+ "net/http"
+ "net/http/httptest"
+ "strings"
+ "testing"
+ "time"
+ "{{.Module}}/internal/bootstrap"
+ "{{.Module}}/internal/config"
+)
+
+func TestAPI(t *testing.T) {
+ server, cleanup, err := bootstrap.Initialize("{{.Environment}}", config.Config{HTTP: config.HTTPConfig{Address: ":8080", ReadHeaderTimeout: time.Second, ShutdownTimeout: time.Second}})
+ if err != nil { t.Fatal(err) }
+ t.Cleanup(func(){ if err := cleanup(); err != nil { t.Error(err) } })
+ request := func(method, path, body string) *httptest.ResponseRecorder {
+  r := httptest.NewRequest(method, path, strings.NewReader(body))
+  r.Header.Set("Content-Type", "application/json")
+  w := httptest.NewRecorder()
+  server.Handler.ServeHTTP(w, r)
+  return w
+ }
+ if w := request("GET", "/health", ""); w.Code != http.StatusOK { t.Fatalf("health: %d", w.Code) }
+ if w := request("GET", "/items", ""); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" { t.Fatalf("empty list: %d %s", w.Code, w.Body) }
+ for _, body := range []string{`{"name":" "}`, `{"name":"`+strings.Repeat("a",101)+`"}`} {
+  if w := request("POST", "/items", body); w.Code != http.StatusUnprocessableEntity { t.Fatalf("invalid name: %d %s", w.Code, w.Body) }
+ }
+ for _, body := range []string{`{`, `{"name":"Ada","extra":true}`, `{"name":"Ada"} {}`} {
+  if w := request("POST", "/items", body); w.Code != http.StatusBadRequest { t.Fatalf("invalid body: %d %s", w.Code, w.Body) }
+ }
+ created := request("POST", "/items", `{"name":"  First item  "}`)
+ var item struct{ ID string `json:"id"`; Name string `json:"name"` }
+ if err := json.Unmarshal(created.Body.Bytes(), &item); err != nil { t.Fatal(err) }
+ if created.Code != http.StatusCreated || item.ID == "" || item.Name != "First item" { t.Fatalf("create: %d %s", created.Code, created.Body) }
+ location := created.Header().Get("Location")
+ if location != "/items/"+item.ID { t.Fatalf("location: %q", location) }
+ if w := request("GET", location, ""); w.Code != http.StatusOK || w.Body.String() != created.Body.String() { t.Fatalf("get: %d %s", w.Code, w.Body) }
+ if w := request("GET", "/items/missing", ""); w.Code != http.StatusNotFound { t.Fatalf("missing: %d", w.Code) }
+ listed := request("GET", "/items", "")
+ var items []json.RawMessage
+ if err := json.Unmarshal(listed.Body.Bytes(), &items); err != nil || len(items) != 1 { t.Fatalf("list: %s %v", listed.Body, err) }
+}

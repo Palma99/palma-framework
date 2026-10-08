@@ -1,0 +1,15 @@
+package main
+
+import (
+ "log"
+ pfw "github.com/palma99/palma-framework"
+ "{{.Module}}/internal/bootstrap"
+)
+
+func main() {
+ env, err := pfw.EnvironmentFromEnv("{{.Environment}}")
+ if err != nil { log.Fatal(err) }
+ app, err := bootstrap.Initialize(env)
+ if err != nil { log.Fatal(err) }
+ if err := app.Run(); err != nil { log.Fatal(err) }
+}

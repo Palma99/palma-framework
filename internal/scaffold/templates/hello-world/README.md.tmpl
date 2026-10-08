@@ -1,0 +1,25 @@
+# {{.Module}}
+
+Minimal Palma application. Requires Go 1.26 or newer.
+
+```sh
+go mod tidy
+go tool pfw run -env {{.Environment}} ./cmd/app
+```
+
+To generate wiring and build separately:
+
+```sh
+go generate ./internal/bootstrap
+go test ./...
+go build -o bin/app ./cmd/app
+PFW_ENV={{.Environment}} ./bin/app
+```
+
+The CLI is pinned through the `tool` directive in go.mod. With a local framework
+replacement, the checkout must remain available; remove the replacement and pin
+a published framework version to share the project independently.
+
+`compose.go` declares supported environments and constructors. Add your own
+names to `pfw.Environments(...)`. Generate again for each selected environment
+before building; the binary rejects an environment different from its wiring.

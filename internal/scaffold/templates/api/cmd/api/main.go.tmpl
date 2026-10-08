@@ -1,0 +1,24 @@
+package main
+
+import (
+ "log"
+ pfw "github.com/palma99/palma-framework"
+ "github.com/palma99/palma-framework/lifecycle"
+ "github.com/palma99/palma-framework/transport/httpserver"
+ "{{.Module}}/internal/bootstrap"
+ "{{.Module}}/internal/config"
+)
+
+func main() {
+ if err := run(); err != nil { log.Fatal(err) }
+}
+
+func run() error {
+ env, err := pfw.EnvironmentFromEnv("{{.Environment}}")
+ if err != nil { return err }
+ cfg, err := config.Load(env)
+ if err != nil { return err }
+ server, cleanup, err := bootstrap.Initialize(env, cfg)
+ if err != nil { return err }
+ return lifecycle.New(lifecycle.Options{ShutdownTimeout: cfg.HTTP.ShutdownTimeout, Cleanup: cleanup}, httpserver.New(server)).RunSignals()
+}
