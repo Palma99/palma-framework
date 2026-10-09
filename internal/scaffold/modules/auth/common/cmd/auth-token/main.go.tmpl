@@ -1,0 +1,42 @@
+// auth-token creates a short-lived JWT for local development. It is not a login endpoint.
+package main
+
+import (
+ "flag"
+ "fmt"
+ "os"
+ "strings"
+ "time"
+
+ "github.com/golang-jwt/jwt/v5"
+ pfw "github.com/palma99/palma-framework"
+ pfwconfig "github.com/palma99/palma-framework/config"
+ "{{.Module}}/internal/auth"
+ authconfig "{{.Module}}/internal/auth/config"
+)
+
+func run() error {
+ subject := flag.String("subject","demo-user","subject of the development token")
+ roles := flag.String("roles","user","comma-separated roles")
+ flag.Parse()
+ env, err := pfw.EnvironmentFromEnv("local")
+ if err != nil { return err }
+ if env != "local" { return fmt.Errorf("auth-token is only available for the local environment") }
+ directory := os.Getenv("PFW_ENV_DIR")
+ if directory == "" { directory = "env" }
+ cfg, err := pfwconfig.Load[authconfig.Config](pfwconfig.Options{Prefix:"APP_AUTH_",Environment:env,EnvDir:directory})
+ if err != nil { return err }
+ if len(cfg.JWTSecret) < 32 { return fmt.Errorf("APP_AUTH_JWT_SECRET must contain at least 32 bytes") }
+ if strings.TrimSpace(*subject) == "" { return fmt.Errorf("subject must not be empty") }
+ now := time.Now()
+ claims := auth.Claims{RegisteredClaims:jwt.RegisteredClaims{
+  Subject:*subject,Issuer:cfg.JWTIssuer,Audience:jwt.ClaimStrings{cfg.JWTAudience},
+  IssuedAt:jwt.NewNumericDate(now),ExpiresAt:jwt.NewNumericDate(now.Add(15*time.Minute)),
+ }}
+ for _, role := range strings.Split(*roles,",") { if role = strings.TrimSpace(role); role != "" { claims.Roles = append(claims.Roles,role) } }
+ token, err := jwt.NewWithClaims(jwt.SigningMethodHS256,claims).SignedString([]byte(cfg.JWTSecret))
+ if err != nil { return err }
+ fmt.Println(token)
+ return nil
+}
+func main() { if err := run(); err != nil { fmt.Fprintln(os.Stderr,err);os.Exit(1) } }

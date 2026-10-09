@@ -90,23 +90,29 @@ pfw add auth -dir ./myapi
 elenca anche i moduli opzionali. La ricetta usa gli stessi file e lo stesso
 setup nei due percorsi: `pfw new -auth` e `pfw add auth`.
 
-Il modulo genera `internal/auth` con cookie extractor, authenticator generico,
-resolver del principal, repository in memoria/SQL, controller e test. Aggiorna
-`Config.Auth`, il mapper degli errori, la registrazione delle rotte e il bootstrap
-DI, che include `AuthModule` da `internal/bootstrap/auth_module.go`. Aggiunge una migration con la versione
-successiva nella `migrations_dir` configurata. La configurazione del cookie è
-`APP_AUTH_COOKIE_NAME`, con default `session`.
+Il modulo genera `internal/auth` con bearer extractor, verifica JWT HS256,
+resolver del principal dai claim, controller e test. Aggiorna `Config.Auth`,
+il mapper, le rotte e il bootstrap DI con `AuthModule`. Aggiunge la dipendenza
+`github.com/golang-jwt/jwt/v5` al `go.mod`, aggiornando versioni precedenti a `v5.3.1` e conservando
+quelle successive già scelte dall'applicazione. L'autenticazione non richiede repository o migration.
 
-- `GET /auth/me` richiede una sessione valida e restituisce il principal.
+- `GET /auth/me` richiede un bearer JWT valido e restituisce il principal.
 - `GET /auth/status` consente richieste anonime ma rifiuta credenziali invalide.
-- In `local`, il cookie `session=local-demo-session` usa il repository in memoria.
-- In `staging`/`prod`, sessioni e utenti vengono letti dalle tabelle SQL dopo
-  l'applicazione della migration; non vengono creati account o sessioni demo.
+- `sub` viene mappato in `Principal.UserID`; `roles` in `Principal.Roles`.
+- Lo stesso flusso JWT viene usato in tutti gli ambienti.
 
-Le rotte applicative esistenti conservano le proprie regole di accesso. Il README
-del modulo mostra come applicare il middleware alle rotte scelte; le policy sulle
-risorse si definiscono nei servizi. Login, password e creazione delle sessioni
-restano flussi applicativi da implementare.
+Configurare `APP_AUTH_JWT_SECRET` con un segreto casuale di almeno 32 byte,
+`APP_AUTH_JWT_ISSUER` e `APP_AUTH_JWT_AUDIENCE` (default: `palma-api`). La verifica
+controlla firma, algoritmo HS256, scadenza obbligatoria, issuer, audience,
+subject non vuoto e validità temporale dei claim presenti. Senza secret il
+modulo può essere costruito, ma ogni tentativo di autenticazione fallisce con
+un errore di configurazione (500); non viene usata una chiave demo implicita.
+
+Il comando generato `go run ./cmd/auth-token` crea un JWT di sviluppo di 15 minuti
+usando il secret configurato, soltanto in `local`. Il README del modulo include
+un esempio curl completo. Le rotte applicative si proteggono con il middleware
+scelto e le policy sulle risorse restano nei servizi. Login, refresh, revoca e
+integrazioni con issuer esterni sono flussi applicativi da implementare.
 
 Il comando registra `modules = ["auth"]` in `pfw.toml`: ripeterlo è un no-op e
 non sovrascrive le personalizzazioni del modulo. I nuovi scaffold salvano anche
@@ -118,13 +124,12 @@ della scrittura. Un lock locale impedisce due installazioni contemporanee; error
 di scrittura ripristinano le modifiche già eseguite. Dopo un'interruzione del
 processo verificare il progetto prima di rimuovere un eventuale `.pfw-add.lock`.
 
-Dopo `add`, rigenerare per l'ambiente desiderato:
+Dopo `add`, aggiornare i moduli Go e rigenerare per l'ambiente desiderato:
 
 ```sh
+go mod tidy
 go tool pfw generate -env local
 go test ./...
-# Prima dell'avvio con SQL:
-go tool pfw migrate up -env staging
 ```
 
 Il progetto deve usare una versione del framework che includa il modulo security.

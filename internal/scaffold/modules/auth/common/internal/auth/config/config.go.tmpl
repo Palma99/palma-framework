@@ -2,5 +2,7 @@ package authconfig
 
 // Config is embedded in the application's configuration with envPrefix AUTH_.
 type Config struct {
- CookieName string `env:"COOKIE_NAME" envDefault:"session"`
+ JWTSecret string `env:"JWT_SECRET"`
+ JWTIssuer string `env:"JWT_ISSUER" envDefault:"palma-api"`
+ JWTAudience string `env:"JWT_AUDIENCE" envDefault:"palma-api"`
 }

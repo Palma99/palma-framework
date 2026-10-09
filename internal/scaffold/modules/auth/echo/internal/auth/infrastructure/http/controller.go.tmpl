@@ -9,12 +9,19 @@ import (
  "{{.Module}}/internal/auth"
 )
 
-type Controller struct { middleware *auth.Middleware }
+type Controller struct { middleware *auth.Middleware; mapper pfwhttp.ErrorMapper }
 //pfw:coconut
-func NewController(middleware *auth.Middleware) *Controller { return &Controller{middleware:middleware} }
+func NewController(middleware *auth.Middleware,mapper pfwhttp.ErrorMapper) *Controller { return &Controller{middleware:middleware,mapper:mapper} }
 func (c *Controller) Register(router *echo.Echo) {
- router.GET("/auth/me",c.Me,pfwecho.RequiredSecurity(c.middleware))
- router.GET("/auth/status",c.Status,pfwecho.OptionalSecurity(c.middleware))
+ router.GET("/auth/me",c.Me,c.challenge,pfwecho.RequiredSecurity(c.middleware))
+ router.GET("/auth/status",c.Status,c.challenge,pfwecho.OptionalSecurity(c.middleware))
+}
+func (c *Controller) challenge(next echo.HandlerFunc) echo.HandlerFunc {
+ return func(ctx *echo.Context) error {
+  err:=next(ctx)
+  if err!=nil { if mapped:=c.mapper.Map(err);mapped!=nil&&mapped.Status==401 { ctx.Response().Header().Set("WWW-Authenticate","Bearer") } }
+  return err
+ }
 }
 func (*Controller) Me(ctx *echo.Context) error {
  principal, err := security.Current[auth.Principal](ctx.Request().Context())

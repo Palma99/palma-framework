@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"golang.org/x/mod/modfile"
 )
 
 func projectSnapshot(t *testing.T, dir string) map[string]string {
@@ -97,8 +99,18 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 				if !reflect.DeepEqual(before, projectSnapshot(t, dir)) {
 					t.Fatal("repeat changed files")
 				}
-				if _, err := os.Stat(filepath.Join(dir, "migrations/000002_create_auth.sql")); err != nil {
+				if _, err := os.Stat(filepath.Join(dir, "migrations/000002_create_auth.sql")); !os.IsNotExist(err) {
+					t.Fatal("auth generated a migration")
+				}
+				if _, err := os.Stat(filepath.Join(dir, "internal/auth/infrastructure/postgres")); !os.IsNotExist(err) {
+					t.Fatal("auth generated a database repository")
+				}
+				modData, err := os.ReadFile(filepath.Join(dir, "go.mod"))
+				if err != nil {
 					t.Fatal(err)
+				}
+				if !bytes.Contains(modData, []byte("github.com/golang-jwt/jwt/v5 v5.3.1")) {
+					t.Fatal("JWT dependency missing")
 				}
 				env := "local"
 				command := func(args ...string) string {
@@ -127,10 +139,11 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 						t.Fatalf("inspect: %v", err)
 					}
 					order := strings.Join(report.Initializers[0].ConstructionOrder, "\n")
-					memory := strings.Contains(order, "internal/auth/infrastructure/memory.NewStore")
-					postgres := strings.Contains(order, "internal/auth/infrastructure/postgres.NewStore")
-					if (env == "local" && (!memory || postgres)) || (env != "local" && (memory || !postgres)) {
-						t.Fatalf("auth repository selection in %s: %s", env, order)
+					if !strings.Contains(order, "internal/auth.NewJWTAuthenticator") || !strings.Contains(order, "internal/auth.NewPrincipalResolver") {
+						t.Fatalf("JWT flow missing in %s: %s", env, order)
+					}
+					if strings.Contains(order, "internal/auth/infrastructure/memory") || strings.Contains(order, "internal/auth/infrastructure/postgres") {
+						t.Fatalf("auth must not use repositories: %s", order)
 					}
 					command("test", "-race", "./...")
 					command("build", "./cmd/api")
@@ -196,7 +209,7 @@ func TestAddAuthConflictsDoNotChangeProject(t *testing.T) {
 	}
 }
 
-func TestAddAuthLegacyManifestAndMigrationNumber(t *testing.T) {
+func TestAddAuthLegacyManifestPreservesMigrations(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "app")
 	if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.test/app", FrameworkVersion: "v0.1.0"}); err != nil {
 		t.Fatal(err)
@@ -211,8 +224,12 @@ func TestAddAuthLegacyManifestAndMigrationNumber(t *testing.T) {
 	if _, added, err := AddModule(dir, "auth"); err != nil || !added {
 		t.Fatalf("legacy: %v %v", added, err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "migrations/000011_create_auth.sql")); err != nil {
-		t.Fatal(err)
+	if _, err := os.Stat(filepath.Join(dir, "migrations/000011_create_auth.sql")); !os.IsNotExist(err) {
+		t.Fatal("auth changed migrations")
+	}
+	dataMigration, err := os.ReadFile(filepath.Join(dir, "migrations/000010_custom.sql"))
+	if err != nil || string(dataMigration) != "keep migration" {
+		t.Fatal("existing migration changed")
 	}
 	data, _ := os.ReadFile(path)
 	if !bytes.Contains(data, []byte("# legacy settings")) {
@@ -227,5 +244,62 @@ func TestAuthRejectsNonAPIAndUnknownModules(t *testing.T) {
 	}
 	if _, _, err := AddModule(t.TempDir(), "unknown"); err == nil {
 		t.Fatal("unknown module accepted")
+	}
+}
+
+func TestAddAuthJWTDependencyVersions(t *testing.T) {
+	for _, version := range []string{"v5.0.0", "v5.3.1", "v5.4.0"} {
+		t.Run(version, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "app")
+			if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.test/app", FrameworkVersion: "v0.1.0"}); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, "go.mod")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err := modfile.Parse("go.mod", data, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := module.AddRequire("github.com/golang-jwt/jwt/v5", version); err != nil {
+				t.Fatal(err)
+			}
+			data, err = module.Format()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, data, 0644); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := AddModule(dir, "auth"); err != nil {
+				t.Fatal(err)
+			}
+			data, err = os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			module, err = modfile.Parse("go.mod", data, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := version
+			if version == "v5.0.0" {
+				want = "v5.3.1"
+			}
+			found := false
+			for _, requirement := range module.Require {
+				if requirement.Mod.Path == "github.com/golang-jwt/jwt/v5" {
+					found = true
+					if requirement.Mod.Version != want {
+						t.Fatalf("version: %s, want %s", requirement.Mod.Version, want)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("JWT dependency removed")
+			}
+		})
 	}
 }

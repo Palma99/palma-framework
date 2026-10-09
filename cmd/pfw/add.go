@@ -13,7 +13,7 @@ var addCommand = command{
 	usage:       "add <module> [options]",
 	description: "Add an optional module to an existing API scaffold",
 	examples:    []string{"pfw add auth", "pfw add auth -dir ./myapi"},
-	notes:       []string{"Available modules: auth. Run from an API scaffold or one of its subdirectories.", "Auth adds session authentication, a custom principal, local/SQL repositories and /auth endpoints. Existing application routes keep their access rules.", "The command preserves custom code and rejects conflicting files or unsupported integration points before writing. Run generate for the environment you intend to use afterwards."},
+	notes:       []string{"Available modules: auth. Run from an API scaffold or one of its subdirectories.", "Auth adds bearer JWT authentication, a principal from verified claims and /auth endpoints. Existing application routes keep their access rules.", "The command preserves custom code and rejects conflicting files or unsupported integration points before writing. Run generate for the environment you intend to use afterwards."},
 	run:         runAdd,
 }
 
@@ -42,6 +42,6 @@ func runAdd(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 		fmt.Fprintf(stdout, "Module %s is already installed in %s\n", name, root)
 		return nil
 	}
-	fmt.Fprintf(stdout, "Added %s module in %s\n\nFrom the project directory:\n  go tool pfw generate -env local\n  go test ./...\n\nSee internal/auth/README.md for endpoints and database migrations.\n", name, root)
+	fmt.Fprintf(stdout, "Added %s module in %s\n\nFrom the project directory:\n  go mod tidy\n  go tool pfw generate -env local\n  go test ./...\n\nSee internal/auth/README.md for JWT configuration and endpoints.\n", name, root)
 	return nil
 }

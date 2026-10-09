@@ -3,8 +3,8 @@
 ## Unreleased
 
 - Modulo aggiuntivo auth per scaffold API: `pfw new -auth` e `pfw add auth`,
-  per stdlib/Echo, con configurazione, sessioni locali/SQL, principal, binding DI,
-  endpoint, test e migration. Installazione ripetibile senza sovrascritture,
+  per stdlib/Echo, con configurazione JWT, principal dai claim, binding DI,
+  endpoint, token di sviluppo e test, senza repository o migration auth. Installazione ripetibile senza sovrascritture,
   controllo dei conflitti e conservazione del codice applicativo esistente.
 
 - Contratti security generici `Authenticator[C,I]`, `PrincipalResolver[I,P]`

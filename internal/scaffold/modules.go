@@ -19,6 +19,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/semver"
 	"golang.org/x/tools/go/ast/astutil"
 )
 
@@ -26,7 +27,7 @@ import (
 type Module struct{ Name, Description string }
 
 func Modules() []Module {
-	return []Module{{"auth", "Typed session authentication with local and PostgreSQL repositories"}}
+	return []Module{{"auth", "Typed bearer JWT authentication with principals from verified claims"}}
 }
 
 type moduleSettings struct {
@@ -138,29 +139,13 @@ func AddModule(directory, name string) (string, bool, error) {
 	if err != nil {
 		return root, false, err
 	}
-	files := map[string][]byte{}
+	files := map[string][]byte{"go.mod": moduleData}
 	for _, path := range paths {
 		data, err := readModuleFile(root, path)
 		if err != nil {
 			return root, false, fmt.Errorf("unsupported API scaffold integration at %s: %w", path, err)
 		}
 		files[path] = data
-	}
-	migrations, err := projectRelative(settings.MigrationsDir)
-	if err != nil {
-		return root, false, err
-	}
-	if err := checkModulePath(root, migrations); err != nil {
-		return root, false, err
-	}
-	entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(migrations)))
-	if err != nil && !os.IsNotExist(err) {
-		return root, false, err
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
-			files[migrations+"/"+entry.Name()] = nil
-		}
 	}
 	originals := make(map[string][]byte, len(files))
 	for path, data := range files {
@@ -169,13 +154,6 @@ func AddModule(directory, name string) (string, bool, error) {
 	prepared, err := prepareAuth(files, Options{Template: "api", Module: module.Module.Mod.Path, Router: settings.Router})
 	if err != nil {
 		return root, false, err
-	}
-	// Nil migration entries are version reservations, never files to rewrite.
-	for path, data := range prepared {
-		if data == nil {
-			delete(prepared, path)
-			delete(originals, path)
-		}
 	}
 	if err := installModuleFiles(root, prepared, originals); err != nil {
 		return root, false, err
@@ -239,25 +217,27 @@ func prepareAuth(files map[string][]byte, options Options) (map[string][]byte, e
 		}
 		files[path] = data
 	}
-	migrations, err := projectRelative(settings.MigrationsDir)
+	module, err := modfile.Parse("go.mod", files["go.mod"], nil)
 	if err != nil {
 		return nil, err
 	}
-	var next int64 = 1
-	for path := range files {
-		if filepath.ToSlash(filepath.Dir(path)) != migrations || !strings.HasSuffix(path, ".sql") {
-			continue
-		}
-		prefix, _, ok := strings.Cut(filepath.Base(path), "_")
-		version, err := strconv.ParseInt(prefix, 10, 64)
-		if !ok || err != nil || version < 1 || version == int64(^uint64(0)>>1) {
-			return nil, fmt.Errorf("invalid migration filename %s", path)
-		}
-		if version >= next {
-			next = version + 1
+	const jwtModule = "github.com/golang-jwt/jwt/v5"
+	// Preserve newer selections, but ensure the generated parser API is available.
+	found := false
+	for _, requirement := range module.Require {
+		if requirement.Mod.Path == jwtModule {
+			found = semver.Compare(requirement.Mod.Version, "v5.3.1") >= 0
 		}
 	}
-	files[fmt.Sprintf("%s/%06d_create_auth.sql", migrations, next)] = authMigration
+	if !found {
+		if err := module.AddRequire(jwtModule, "v5.3.1"); err != nil {
+			return nil, err
+		}
+	}
+	files["go.mod"], err = module.Format()
+	if err != nil {
+		return nil, err
+	}
 	settings.Modules = append(settings.Modules, "auth")
 	var names []string
 	for _, name := range settings.Modules {
@@ -642,21 +622,3 @@ func replaceModuleFile(path string, content []byte) error {
 	}
 	return os.Rename(file.Name(), path)
 }
-
-var authMigration = []byte(`-- +pfw Up
-CREATE TABLE pfw_auth_users (
- id TEXT PRIMARY KEY,
- roles JSONB NOT NULL DEFAULT '[]'::jsonb,
- disabled BOOLEAN NOT NULL DEFAULT false
-);
-CREATE TABLE pfw_auth_sessions (
- session_hash CHAR(64) PRIMARY KEY,
- user_id TEXT NOT NULL REFERENCES pfw_auth_users(id),
- expires_at TIMESTAMPTZ NOT NULL,
- revoked BOOLEAN NOT NULL DEFAULT false
-);
-
--- +pfw Down
-DROP TABLE pfw_auth_sessions;
-DROP TABLE pfw_auth_users;
-`)
