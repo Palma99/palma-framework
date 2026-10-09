@@ -95,7 +95,7 @@ func TestPublishedVersionAndBundledFiles(t *testing.T) {
 	if file.Module.Mod.Path != "example.com/app" || frameworkVersion != "v0.1.0" || driverVersion != "v5.11.0" || len(file.Replace) != 0 || len(file.Tool) != 1 {
 		t.Fatalf("go.mod: %s", data)
 	}
-	for _, name := range []string{"pfw.toml", ".gitignore", "env/.env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/controller.go", "internal/item/infrastructure/memory/store.go", "internal/platform/database/database.go", "internal/item/infrastructure/postgres/store.go", "schema.sql", "env/.env.local", "env/.env.staging", "env/.env.prod"} {
+	for _, name := range []string{"pfw.toml", ".gitignore", "env/.env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/controller.go", "internal/item/infrastructure/memory/store.go", "internal/platform/database/database.go", "internal/item/infrastructure/postgres/store.go", "migrations/000001_create_items.sql", "env/.env.local", "env/.env.staging", "env/.env.prod"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -187,6 +187,7 @@ func TestStandaloneTemplatesGenerateCompileAndRun(t *testing.T) {
 				return string(output)
 			}
 			goCommand("mod", "tidy")
+			goCommand("tool", "pfw", "migrate", "--help")
 			goCommand("generate", "./internal/bootstrap")
 			commandDir = filepath.Join(dir, "internal", "bootstrap")
 			goCommand("tool", "pfw", "generate", "-env", env)

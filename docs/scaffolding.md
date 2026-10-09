@@ -146,8 +146,11 @@ ignorati `env/.env.staging.local` e `env/.env.prod.local`. Il DSN è obbligatori
 `local`; la configurazione fallisce prima dell'avvio in sua assenza.
 
 PostgreSQL pgx è incluso e registrato dal provider. Prima dell'avvio SQL,
-applicare esplicitamente `schema.sql` al database selezionato: non ci sono
-migrazioni automatiche. Gli ambienti staging e prod hanno limiti iniziali del
+eseguire `go tool pfw migrate up -env staging` oppure `-env prod`. Lo scaffold
+include `migrations/000001_create_items.sql` con sezioni `-- +pfw Up` e
+`-- +pfw Down`; le
+migration non vengono eseguite automaticamente all’avvio. Vedi la
+[guida migration](migrations.md). Gli ambienti staging e prod hanno limiti iniziali del
 pool rispettivamente di 10/2 e 40/10 connessioni aperte/inattive, personalizzabili
 con `APP_DB_*`. `env/.env.example` documenta tutte le opzioni.
 
@@ -217,6 +220,7 @@ esplicito se rimangono disponibili più mapper compatibili.
 bootstrap = "./internal/bootstrap"
 main = "./cmd/api"
 env_dir = "./env"
+migrations_dir = "./migrations"
 ```
 
 Il template hello-world usa `main = "./cmd/app"`. Puoi modificare questi

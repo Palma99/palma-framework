@@ -11,9 +11,10 @@ import (
 )
 
 type projectSettings struct {
-	Bootstrap *string `toml:"bootstrap"`
-	Main      *string `toml:"main"`
-	EnvDir    *string `toml:"env_dir"`
+	Bootstrap     *string `toml:"bootstrap"`
+	Main          *string `toml:"main"`
+	EnvDir        *string `toml:"env_dir"`
+	MigrationsDir *string `toml:"migrations_dir"`
 }
 
 func readProjectSettings(root string) (projectSettings, error) {
@@ -31,6 +32,9 @@ func readProjectSettings(root string) (projectSettings, error) {
 	}
 	if settings.EnvDir != nil && strings.TrimSpace(*settings.EnvDir) == "" {
 		return settings, fmt.Errorf("%s: env_dir must be a non-empty directory path", path)
+	}
+	if settings.MigrationsDir != nil && strings.TrimSpace(*settings.MigrationsDir) == "" {
+		return settings, fmt.Errorf("%s: migrations_dir must be a non-empty directory path", path)
 	}
 	return settings, nil
 }

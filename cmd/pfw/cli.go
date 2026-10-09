@@ -27,6 +27,7 @@ func init() {
 		"generate":  generateCommand,
 		"inspect":   inspectCommand,
 		"run":       runCommand,
+		"migrate":   migrateCommand,
 	}
 }
 

@@ -144,6 +144,12 @@ Il [componente database](docs/database.md) gestisce pool SQL, primary e repliche
 nominate, apertura con timeout e cleanup. I repository ricevono gruppi tipizzati
 tramite DI e selezionano esplicitamente il pool, anche a runtime.
 
+## Migration
+
+La [gestione delle migration](docs/migrations.md) è inclusa nella CLI:
+`pfw migrate create|up|down|status`, con file SQL versionati, checksum e lock
+PostgreSQL. Lo scaffold API include la migration iniziale degli item.
+
 ## Transazioni applicative
 
 `transaction.Runner.Within` coordina operazioni applicative tramite un context

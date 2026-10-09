@@ -56,8 +56,15 @@ The initial pool limits are 10 open / 2 idle connections in staging and 40 open 
 all timeout and pool settings. The shared `env/.env` and private override files are
 ignored by Git; `env/.env.local`, `env/.env.staging` and `env/.env.prod` are tracked defaults.
 
-Before starting staging or prod, apply `schema.sql` explicitly to the selected
-database with your PostgreSQL tooling. Connection setup does not create tables.
+Before starting staging or prod, apply the bundled migration explicitly to the
+selected primary database:
+
+```sh
+go tool pfw migrate status -env staging
+go tool pfw migrate up -env staging
+go tool pfw migrate up -env prod
+```
+
 Then select the environment, which also regenerates its wiring:
 
 ```sh
@@ -87,12 +94,34 @@ replicas or separate database groups with distinct Go types.
 Queries use the driver's normal API. To participate in an application transaction,
 use `sqltx.Executor(ctx, db.Primary())` from
 `github.com/palma99/palma-framework/transaction/sql`. Selecting a replica inside
-a transaction on the primary returns an error. No ORM, query builder or schema
-migrations are added; connection setup does not create the application's tables.
+a transaction on the primary returns an error. No ORM or query builder is required. Migrations are managed explicitly by the
+CLI; connection setup does not create the application's tables.
 
 The initializer receives the startup context, so SIGINT/SIGTERM also cancel a
 database connection attempt. Pool cleanup runs after the HTTP server stops and
 also runs if a later constructor fails.
+
+## Migrations
+
+The starter includes `migrations/000001_create_items.sql` with `-- +pfw Up` and
+`-- +pfw Down` sections.
+`pfw.toml` sets `migrations_dir = "./migrations"`. Create the next file with
+`go tool pfw migrate create add_fields`, then write the SQL before applying it.
+The primary DSN and environment configuration are shared with the application.
+
+```sh
+go tool pfw migrate up -env staging       # all pending versions
+go tool pfw migrate status -env staging
+go tool pfw migrate down -env staging     # undo one version
+```
+
+`-steps N` limits up/down. The PostgreSQL tracking table records checksums;
+keep applied files unchanged and add a new version to change the schema.
+Each migration runs in a transaction under a database advisory lock. SQL that
+requires execution outside a transaction is not supported. Rollback executes
+exactly the SQL written in the `Down` section and can remove data. Migrations do not
+run automatically during API startup. For another database, use `-dsn-env` and
+`-dir` to select its primary DSN variable and migration directory.
 
 ## Architecture
 
@@ -101,6 +130,7 @@ also runs if a later constructor fails.
 - `internal/item/infrastructure/http`: HTTP infrastructure, DTOs, JSON decoding and error mapping.
 - `internal/item/infrastructure/memory`: concurrency-safe local storage.
 - `internal/item/infrastructure/postgres`: persistent SQL repository for staging/prod.
+- `migrations`: versioned SQL schema changes.
 - `env`: environment defaults and private dotenv overrides.
 - `internal/config`: typed configuration with validation and dotenv loading.
 - `internal/platform/http`: router and server configuration.

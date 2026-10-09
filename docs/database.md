@@ -153,3 +153,5 @@ L'esempio HTTP usa `internal/platform/database.OpenMainDatabase` e inietta
 `MainDB` nel repository Postgres. I suoi metodi scelgono sempre il primary.
 I test usano driver locali e non richiedono database esterni. Client non SQL,
 come MongoDB, richiedono adapter dedicati e non rientrano in questa API.
+
+Per gestire lo schema esplicitamente con la CLI, vedere la [guida migration](migrations.md).
