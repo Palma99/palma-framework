@@ -11,10 +11,13 @@ import (
 )
 
 type projectSettings struct {
-	Bootstrap     *string `toml:"bootstrap"`
-	Main          *string `toml:"main"`
-	EnvDir        *string `toml:"env_dir"`
-	MigrationsDir *string `toml:"migrations_dir"`
+	Scaffold      string   `toml:"scaffold"`
+	Router        string   `toml:"router"`
+	Modules       []string `toml:"modules"`
+	Bootstrap     *string  `toml:"bootstrap"`
+	Main          *string  `toml:"main"`
+	EnvDir        *string  `toml:"env_dir"`
+	MigrationsDir *string  `toml:"migrations_dir"`
 }
 
 func readProjectSettings(root string) (projectSettings, error) {

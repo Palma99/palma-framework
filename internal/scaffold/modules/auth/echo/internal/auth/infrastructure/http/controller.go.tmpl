@@ -1,0 +1,29 @@
+package authhttp
+
+import (
+ "errors"
+ "github.com/labstack/echo/v5"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ "github.com/palma99/palma-framework/security"
+ pfwecho "github.com/palma99/palma-framework/transport/echo"
+ "{{.Module}}/internal/auth"
+)
+
+type Controller struct { middleware *auth.Middleware }
+//pfw:coconut
+func NewController(middleware *auth.Middleware) *Controller { return &Controller{middleware:middleware} }
+func (c *Controller) Register(router *echo.Echo) {
+ router.GET("/auth/me",c.Me,pfwecho.RequiredSecurity(c.middleware))
+ router.GET("/auth/status",c.Status,pfwecho.OptionalSecurity(c.middleware))
+}
+func (*Controller) Me(ctx *echo.Context) error {
+ principal, err := security.Current[auth.Principal](ctx.Request().Context())
+ if err != nil { return err }
+ return pfwhttp.OK(principal).Write(ctx.Response())
+}
+func (*Controller) Status(ctx *echo.Context) error {
+ _, err := security.Current[auth.Principal](ctx.Request().Context())
+ if errors.Is(err,security.ErrUnauthenticated) { return pfwhttp.OK(map[string]bool{"authenticated":false}).Write(ctx.Response()) }
+ if err != nil { return err }
+ return pfwhttp.OK(map[string]bool{"authenticated":true}).Write(ctx.Response())
+}

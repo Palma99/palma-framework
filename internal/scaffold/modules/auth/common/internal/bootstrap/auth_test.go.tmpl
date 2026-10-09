@@ -1,0 +1,33 @@
+package bootstrap_test
+
+import (
+ "context"
+ "net/http"
+ "net/http/httptest"
+ "strings"
+ "testing"
+ "time"
+ pfw "github.com/palma99/palma-framework"
+ bootstrap "{{.Module}}/internal/bootstrap"
+ "{{.Module}}/internal/config"
+)
+
+func TestAuthEndpoints(t *testing.T) {
+ env,err:=pfw.EnvironmentFromEnv("local");if err!=nil{t.Fatal(err)}
+ if env!="local"{t.Skip("auth endpoint fixtures use the local memory adapter")}
+ server,cleanup,err:=bootstrap.Initialize(context.Background(),env,config.Config{HTTP:config.HTTPConfig{Address:":8080",ReadHeaderTimeout:time.Second,ShutdownTimeout:time.Second}})
+ if err!=nil{t.Fatal(err)}
+ t.Cleanup(func(){if err:=cleanup();err!=nil{t.Error(err)}})
+ for _,tc:=range []struct{path,cookie,body string;status int}{
+  {"/auth/me","","unauthenticated",401},
+  {"/auth/status","","\"authenticated\":false",200},
+ }{
+  r:=httptest.NewRequest("GET",tc.path,nil);w:=httptest.NewRecorder();server.HTTPServer().Handler.ServeHTTP(w,r)
+  if w.Code!=tc.status||!strings.Contains(w.Body.String(),tc.body){t.Fatalf("%s: %d %s",tc.path,w.Code,w.Body)}
+ }
+ if env!="local"{return}
+ for _,tc:=range []struct{cookie string;status int}{ {"local-demo-session",200},{"invalid",401} }{
+  r:=httptest.NewRequest("GET","/auth/me",nil);r.AddCookie(&http.Cookie{Name:"session",Value:tc.cookie});w:=httptest.NewRecorder();server.HTTPServer().Handler.ServeHTTP(w,r)
+  if w.Code!=tc.status{t.Fatalf("authenticated: %d %s",w.Code,w.Body)}
+ }
+}

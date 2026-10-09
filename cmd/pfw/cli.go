@@ -23,6 +23,7 @@ func init() {
 	commands = map[string]command{
 		"version":   versionCommand,
 		"new":       newCommand,
+		"add":       addCommand,
 		"templates": templatesCommand,
 		"generate":  generateCommand,
 		"inspect":   inspectCommand,

@@ -7,6 +7,7 @@
 - `project.go`: risoluzione dei target impliciti da `pfw.toml` alla root del modulo.
 - `version.go`: versione da metadati Go o incorporata nei binari di release.
 - `new.go`: creazione di progetti (`new`) ed elenco dei template (`templates`).
+- `add.go`: installazione di moduli aggiuntivi negli scaffold API (`add auth`).
 
 I template sono inclusi con `go:embed` in `internal/scaffold/templates`.
 Le varianti HTTP dell'API sono in `internal/scaffold/routers`, con un registro
@@ -14,6 +15,11 @@ dei router e delle loro dipendenze in `scaffold.Routers()`. `new -router` selezi
 la variante; `templates` mostra le scelte disponibili.
 `internal/scaffold` valida le opzioni, renderizza e formatta i file e crea
 un modulo indipendente. Il README di ciascun template documenta i passi successivi.
+
+Le ricette opzionali sono in `internal/scaffold/modules`, elencate da
+`scaffold.Modules()`. La prima è `auth`, installabile anche con `new -auth`.
+`internal/scaffold/modules.go` prepara gli stessi file per entrambi i percorsi,
+integra configurazione/router/DI/mapper e applica modifiche verificate al progetto.
 
 Per aggiungere un comando, creare un file con una dichiarazione `command` e
 un handler `func(context.Context, []string, io.Writer, io.Writer) error`, quindi

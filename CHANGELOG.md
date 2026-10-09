@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Modulo aggiuntivo auth per scaffold API: `pfw new -auth` e `pfw add auth`,
+  per stdlib/Echo, con configurazione, sessioni locali/SQL, principal, binding DI,
+  endpoint, test e migration. Installazione ripetibile senza sovrascritture,
+  controllo dei conflitti e conservazione del codice applicativo esistente.
+
+- Contratti security generici `Authenticator[C,I]`, `PrincipalResolver[I,P]`
+  e `Authorizer[P,R]`, principal applicativi nel context, middleware HTTP
+  obbligatorio/opzionale e adapter Echo, mapping 401/403 e esempio completo
+  con sessioni e policy sui documenti. Binding DI generici verificati end-to-end.
+
 - `AutoBind` nella radice Build/BuildWithCleanup, ereditarietà nei moduli e
   override locale con `AutoBind(true/false)`, inclusi gli scope annidati.
 

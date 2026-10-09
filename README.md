@@ -156,3 +156,21 @@ PostgreSQL. Lo scaffold API include la migration iniziale degli item.
 condiviso. L’integrazione `transaction/sql` permette a più repository di usare
 la stessa transazione SQL, con commit, rollback e annidamento controllati.
 Vedi la [guida alle transazioni](docs/transactions.md).
+
+## Autenticazione e autorizzazione
+
+Il [modulo security](docs/security.md) definisce contratti generici per
+credenziali, identità verificate, principal applicativi e policy sulle risorse.
+L'applicazione sceglie i tipi e la sorgente dei dati; il framework propaga il
+principal nel context e integra autenticazione obbligatoria/opzionale con
+`net/http` ed Echo. Gli errori security si collegano allo stesso mapper HTTP
+usato da controller e servizi.
+
+L'[esempio security](examples/security/README.md) mostra cookie di sessione,
+risoluzione dell'utente, ruoli, organizzazione e autorizzazione dei documenti,
+con repository in memoria e wiring generato.
+
+Il modulo può essere incluso nello scaffold API con
+`pfw new -template api -auth -module example.com/myapi ./myapi`, oppure aggiunto
+successivamente con `pfw add auth`. La [guida allo scaffolding](docs/scaffolding.md)
+descrive endpoint, repository locali/SQL e migration generate.

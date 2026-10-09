@@ -1,0 +1,6 @@
+package authconfig
+
+// Config is embedded in the application's configuration with envPrefix AUTH_.
+type Config struct {
+ CookieName string `env:"COOKIE_NAME" envDefault:"session"`
+}

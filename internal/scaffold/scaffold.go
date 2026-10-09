@@ -19,7 +19,7 @@ import (
 
 const FrameworkModule = "github.com/palma99/palma-framework"
 
-//go:embed all:templates all:routers
+//go:embed all:templates all:routers all:modules
 var bundled embed.FS
 
 type Template struct{ Name, Description, Entry string }
@@ -35,6 +35,7 @@ type Options struct {
 	Template, Directory, Module, Environment string
 	FrameworkVersion, FrameworkDir           string
 	Router                                   string
+	Auth                                     bool
 }
 
 type Dependency struct{ Module, Version string }
@@ -93,6 +94,9 @@ func Create(options Options) (string, error) {
 	} else if options.Router != "" {
 		return "", fmt.Errorf("-router is only available for the api template")
 	}
+	if options.Auth && options.Template != "api" {
+		return "", fmt.Errorf("-auth is only available for the api template")
+	}
 	if err := module.CheckPath(options.Module); err != nil {
 		return "", fmt.Errorf("invalid module path: %w", err)
 	}
@@ -149,6 +153,12 @@ func Create(options Options) (string, error) {
 			files[name] = content
 			return nil
 		})
+		if err != nil {
+			return "", err
+		}
+	}
+	if options.Auth {
+		files, err = prepareAuth(files, options)
 		if err != nil {
 			return "", err
 		}

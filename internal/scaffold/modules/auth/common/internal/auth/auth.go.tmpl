@@ -1,0 +1,76 @@
+package auth
+
+import (
+ "context"
+ "errors"
+ "net/http"
+ "time"
+
+ pfwsecurity "github.com/palma99/palma-framework/security"
+ securityhttp "github.com/palma99/palma-framework/security/http"
+ pfwhttp "github.com/palma99/palma-framework/http"
+ "{{.Module}}/internal/config"
+)
+
+var (
+ ErrSessionNotFound = errors.New("auth: session not found")
+ ErrUserNotFound = errors.New("auth: user not found")
+)
+
+type SessionCredentials struct { SessionID string }
+type VerifiedSession struct { UserID string }
+
+// Principal belongs to the application: extend these fields for your use cases.
+type Principal struct {
+ UserID string `json:"user_id"`
+ Roles []string `json:"roles"`
+}
+type Session struct { UserID string; ExpiresAt time.Time; Revoked bool }
+type User struct { ID string; Roles []string; Disabled bool }
+type SessionRepository interface { FindSession(context.Context, string) (Session, error) }
+type UserRepository interface { FindUser(context.Context, string) (User, error) }
+
+type CookieExtractor struct { name string }
+//pfw:coconut
+func NewCookieExtractor(cfg config.Config) (*CookieExtractor, error) {
+ name := cfg.Auth.CookieName
+ if name == "" { name = "session" }
+ if err := (&http.Cookie{Name:name,Value:"validation"}).Valid(); err != nil { return nil, err }
+ return &CookieExtractor{name:name}, nil
+}
+func (e *CookieExtractor) Extract(r *http.Request) (SessionCredentials, error) {
+ // Multiple matching cookies are ambiguous credentials, not an anonymous request.
+ cookies := r.CookiesNamed(e.name)
+ if len(cookies) == 0 { return SessionCredentials{}, pfwsecurity.ErrMissingCredentials }
+ if len(cookies) != 1 || cookies[0].Value == "" { return SessionCredentials{}, pfwsecurity.ErrInvalidCredentials }
+ return SessionCredentials{SessionID:cookies[0].Value}, nil
+}
+
+type SessionAuthenticator struct { sessions SessionRepository }
+//pfw:coconut
+func NewSessionAuthenticator(sessions SessionRepository) *SessionAuthenticator { return &SessionAuthenticator{sessions:sessions} }
+func (a *SessionAuthenticator) Authenticate(ctx context.Context, credentials SessionCredentials) (VerifiedSession, error) {
+ session, err := a.sessions.FindSession(ctx, credentials.SessionID)
+ if errors.Is(err, ErrSessionNotFound) { return VerifiedSession{}, pfwsecurity.ErrInvalidCredentials }
+ if err != nil { return VerifiedSession{}, err }
+ if session.Revoked || !time.Now().Before(session.ExpiresAt) { return VerifiedSession{}, pfwsecurity.ErrInvalidCredentials }
+ return VerifiedSession{UserID:session.UserID}, nil
+}
+
+type PrincipalResolver struct { users UserRepository }
+//pfw:coconut
+func NewPrincipalResolver(users UserRepository) *PrincipalResolver { return &PrincipalResolver{users:users} }
+func (r *PrincipalResolver) Resolve(ctx context.Context, identity VerifiedSession) (Principal, error) {
+ user, err := r.users.FindUser(ctx, identity.UserID)
+ if errors.Is(err, ErrUserNotFound) { return Principal{}, pfwsecurity.ErrUnauthenticated }
+ if err != nil { return Principal{}, err }
+ if user.Disabled { return Principal{}, pfwsecurity.ErrForbidden }
+ return Principal{UserID:user.ID, Roles:append([]string(nil),user.Roles...)}, nil
+}
+
+// Middleware is the application's instantiated generic authentication flow.
+type Middleware = securityhttp.Middleware[SessionCredentials, VerifiedSession, Principal]
+//pfw:coconut
+func NewMiddleware(extractor securityhttp.CredentialExtractor[SessionCredentials], authenticator pfwsecurity.Authenticator[SessionCredentials, VerifiedSession], resolver pfwsecurity.PrincipalResolver[VerifiedSession, Principal], mapper pfwhttp.ErrorMapper) (*Middleware, error) {
+ return securityhttp.NewMiddleware(extractor, authenticator, resolver, mapper)
+}

@@ -1,0 +1,50 @@
+package auth_test
+
+import (
+ "context"
+ "errors"
+ "net/http"
+ "net/http/httptest"
+ "testing"
+ "time"
+ "{{.Module}}/internal/auth"
+ "{{.Module}}/internal/config"
+ "github.com/palma99/palma-framework/security"
+)
+
+type repository struct { session auth.Session; user auth.User; sessionErr, userErr error }
+func (r repository) FindSession(context.Context,string)(auth.Session,error){return r.session,r.sessionErr}
+func (r repository) FindUser(context.Context,string)(auth.User,error){return r.user,r.userErr}
+
+func TestSessionAndPrincipal(t *testing.T) {
+ for _,tc := range []struct { name string; revoked, disabled bool; expires time.Time; want error }{
+  {name:"valid",expires:time.Now().Add(time.Hour)},
+  {name:"expired",expires:time.Now().Add(-time.Hour),want:security.ErrInvalidCredentials},
+  {name:"revoked",expires:time.Now().Add(time.Hour),revoked:true,want:security.ErrInvalidCredentials},
+  {name:"disabled",expires:time.Now().Add(time.Hour),disabled:true,want:security.ErrForbidden},
+ } {
+  t.Run(tc.name,func(t *testing.T){
+   repo:=repository{session:auth.Session{UserID:"user",ExpiresAt:tc.expires,Revoked:tc.revoked},user:auth.User{ID:"user",Roles:[]string{"user"},Disabled:tc.disabled}}
+   extractor,err:=auth.NewCookieExtractor(config.Config{});if err!=nil{t.Fatal(err)}
+   m,err:=auth.NewMiddleware(extractor,auth.NewSessionAuthenticator(repo),auth.NewPrincipalResolver(repo),nil);if err!=nil{t.Fatal(err)}
+   request:=httptest.NewRequest("GET","/",nil);request.AddCookie(&http.Cookie{Name:"session",Value:"session-id"})
+   request,err=m.RequiredRequest(request)
+   if tc.want!=nil {if !errors.Is(err,tc.want){t.Fatalf("error: %v",err)};return}
+   if err!=nil{t.Fatal(err)}
+   p,err:=security.Current[auth.Principal](request.Context());if err!=nil||p.UserID!="user"{t.Fatalf("principal: %+v %v",p,err)}
+  })
+ }
+}
+
+func TestExtractorAndInfrastructureErrors(t *testing.T) {
+ extractor,err:=auth.NewCookieExtractor(config.Config{});if err!=nil{t.Fatal(err)}
+ r:=httptest.NewRequest("GET","/",nil)
+ if _,err:=extractor.Extract(r);!errors.Is(err,security.ErrMissingCredentials){t.Fatalf("missing: %v",err)}
+ r.AddCookie(&http.Cookie{Name:"session",Value:"one"});r.AddCookie(&http.Cookie{Name:"session",Value:"two"})
+ if _,err:=extractor.Extract(r);!errors.Is(err,security.ErrInvalidCredentials){t.Fatalf("ambiguous: %v",err)}
+ backend:=errors.New("database unavailable")
+ a:=auth.NewSessionAuthenticator(repository{sessionErr:backend})
+ if _,err:=a.Authenticate(context.Background(),auth.SessionCredentials{});!errors.Is(err,backend){t.Fatalf("backend: %v",err)}
+ resolver:=auth.NewPrincipalResolver(repository{userErr:backend})
+ if _,err:=resolver.Resolve(context.Background(),auth.VerifiedSession{});!errors.Is(err,backend){t.Fatalf("resolver backend: %v",err)}
+}

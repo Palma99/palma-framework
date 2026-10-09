@@ -71,6 +71,65 @@ di controller e server nella nuova directory. Dominio, application, configurazio
 storage e test del contratto HTTP rimangono condivisi. Gin e Chi non sono
 ancora disponibili.
 
+## Moduli aggiuntivi: auth
+
+Il modulo `auth` può essere incluso nella creazione oppure aggiunto a uno
+scaffold API esistente, con router stdlib o Echo:
+
+```sh
+pfw new -template api -auth -module example.com/myapi ./myapi
+pfw new -template api -router echo -auth -module example.com/myapi ./myapi
+
+# Dalla root del progetto o da una sua sottocartella:
+pfw add auth
+# Oppure da un'altra directory:
+pfw add auth -dir ./myapi
+```
+
+`-auth` è un flag booleano, disponibile soltanto per `api`. `pfw templates`
+elenca anche i moduli opzionali. La ricetta usa gli stessi file e lo stesso
+setup nei due percorsi: `pfw new -auth` e `pfw add auth`.
+
+Il modulo genera `internal/auth` con cookie extractor, authenticator generico,
+resolver del principal, repository in memoria/SQL, controller e test. Aggiorna
+`Config.Auth`, il mapper degli errori, la registrazione delle rotte e il bootstrap
+DI, che include `AuthModule` da `internal/bootstrap/auth_module.go`. Aggiunge una migration con la versione
+successiva nella `migrations_dir` configurata. La configurazione del cookie è
+`APP_AUTH_COOKIE_NAME`, con default `session`.
+
+- `GET /auth/me` richiede una sessione valida e restituisce il principal.
+- `GET /auth/status` consente richieste anonime ma rifiuta credenziali invalide.
+- In `local`, il cookie `session=local-demo-session` usa il repository in memoria.
+- In `staging`/`prod`, sessioni e utenti vengono letti dalle tabelle SQL dopo
+  l'applicazione della migration; non vengono creati account o sessioni demo.
+
+Le rotte applicative esistenti conservano le proprie regole di accesso. Il README
+del modulo mostra come applicare il middleware alle rotte scelte; le policy sulle
+risorse si definiscono nei servizi. Login, password e creazione delle sessioni
+restano flussi applicativi da implementare.
+
+Il comando registra `modules = ["auth"]` in `pfw.toml`: ripeterlo è un no-op e
+non sovrascrive le personalizzazioni del modulo. I nuovi scaffold salvano anche
+`scaffold` e `router`; quelli precedenti possono essere riconosciuti dal codice
+del router. La ricetta modifica strutturalmente i punti d'integrazione previsti
+dallo scaffold API, conservando il codice circostante. File in conflitto, alias
+occupati, symlink e punti d'integrazione non riconosciuti causano un errore prima
+della scrittura. Un lock locale impedisce due installazioni contemporanee; errori
+di scrittura ripristinano le modifiche già eseguite. Dopo un'interruzione del
+processo verificare il progetto prima di rimuovere un eventuale `.pfw-add.lock`.
+
+Dopo `add`, rigenerare per l'ambiente desiderato:
+
+```sh
+go tool pfw generate -env local
+go test ./...
+# Prima dell'avvio con SQL:
+go tool pfw migrate up -env staging
+```
+
+Il progetto deve usare una versione del framework che includa il modulo security.
+Dal checkout di sviluppo usare `-framework-dir` come negli esempi sopra.
+
 ## Avvio e generazione
 
 Entrambi gli skeleton richiedono Go 1.26 o successivo. Il `go.mod` registra la CLI

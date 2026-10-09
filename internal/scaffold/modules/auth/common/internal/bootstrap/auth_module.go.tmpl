@@ -1,0 +1,26 @@
+//go:build pfw_inject
+
+package bootstrap
+
+import (
+ pfw "github.com/palma99/palma-framework"
+ "github.com/palma99/palma-framework/security"
+ securityhttp "github.com/palma99/palma-framework/security/http"
+ "{{.Module}}/internal/auth"
+ "{{.Module}}/internal/auth/infrastructure/memory"
+ "{{.Module}}/internal/auth/infrastructure/postgres"
+)
+
+// AuthModule selects repositories and connects the application's generic contracts.
+// The bootstrap's discovery registers the annotated constructors.
+var AuthModule = pfw.Module(
+ pfw.Bind[auth.SessionRepository,*postgres.Store](),
+ pfw.Bind[auth.UserRepository,*postgres.Store](),
+ pfw.ForEnv("local",
+  pfw.Bind[auth.SessionRepository,*memory.Store](),
+  pfw.Bind[auth.UserRepository,*memory.Store](),
+ ),
+ pfw.Bind[securityhttp.CredentialExtractor[auth.SessionCredentials],*auth.CookieExtractor](),
+ pfw.Bind[security.Authenticator[auth.SessionCredentials,auth.VerifiedSession],*auth.SessionAuthenticator](),
+ pfw.Bind[security.PrincipalResolver[auth.VerifiedSession,auth.Principal],*auth.PrincipalResolver](),
+)
