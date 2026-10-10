@@ -5,13 +5,14 @@ import (
  "github.com/labstack/echo/v5"
  pfwhttp "github.com/palma99/palma-framework/http"
  "github.com/palma99/palma-framework/security"
+ securityhttp "github.com/palma99/palma-framework/security/http"
  pfwecho "github.com/palma99/palma-framework/transport/echo"
  "{{.Module}}/internal/auth"
 )
 
-type Controller struct { middleware *auth.Middleware; mapper pfwhttp.ErrorMapper }
+type Controller struct { middleware securityhttp.RequestAuthenticator; mapper pfwhttp.ErrorMapper }
 //pfw:coconut
-func NewController(middleware *auth.Middleware,mapper pfwhttp.ErrorMapper) *Controller { return &Controller{middleware:middleware,mapper:mapper} }
+func NewController(middleware securityhttp.RequestAuthenticator,mapper pfwhttp.ErrorMapper) *Controller { return &Controller{middleware:middleware,mapper:mapper} }
 func (c *Controller) Register(router *echo.Echo) {
  router.GET("/auth/me",c.Me,c.challenge,pfwecho.RequiredSecurity(c.middleware))
  router.GET("/auth/status",c.Status,c.challenge,pfwecho.OptionalSecurity(c.middleware))

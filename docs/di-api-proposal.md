@@ -358,8 +358,9 @@ riferimenti; non esegue funzioni utente per scoprire il grafo.
 
 ## Perimetro del primo generatore
 
-- Costruttori dichiarati come funzioni non generiche: `func(...) T`,
-  `func(...) (T, error)` e `func(...) (T, func() error, error)`.
+- Costruttori dichiarati come funzioni nominate, non generiche oppure istanziate
+  con argomenti di tipo espliciti: `func(...) T`, `func(...) (T, error)`
+  e `func(...) (T, func() error, error)`.
 - Un solo servizio restituito per costruttore, con eventuali cleanup ed `error`.
 - Dipendenze per identità di tipo, interfacce con binding esplicito o automatico
   opzionale per modulo in presenza di un candidato unico.
@@ -421,3 +422,11 @@ I test del generatore compilano ed eseguono l'output, verificano riuso delle
 dipendenze, propagazione degli errori, determinismo e diagnostica dei grafi non
 validi. L'endpoint HTTP viene verificato tramite `httptest`. Successivamente
 si collegherà una seconda libreria HTTP allo stesso servizio applicativo.
+
+### Costruttori generici istanziati
+
+`Constructors` e `Override(Constructors(...))` accettano funzioni nominate
+con argomenti di tipo espliciti, per esempio `Constructors(NewStore[User])`.
+Ogni istanza ha un'identità distinta nel grafo e il codice generato conserva
+argomenti di tipo e import. Restano supportati i risultati fallibili e il cleanup.
+`Discover` richiede costruttori non generici: i tipi si scelgono nella registrazione.

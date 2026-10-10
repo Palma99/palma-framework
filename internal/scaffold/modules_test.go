@@ -63,6 +63,22 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 					t.Fatal(err)
 				}
 				if !atCreation {
+					// Preserve environment values and private signing configuration.
+					for _, fixture := range []struct{ path, content string }{
+						{"env/.env.local", "# custom auth defaults\nAPP_AUTH_JWT_ISSUER=custom-issuer\nAPP_AUTH_JWT_AUDIENCE=custom-audience\n"},
+						{"env/.env.local.local", "APP_AUTH_JWT_SECRET=application-private-secret-with-32-bytes\n"},
+					} {
+						path := filepath.Join(dir, fixture.path)
+						file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+						if err != nil {
+							t.Fatal(err)
+						}
+						_, writeErr := file.WriteString(fixture.content)
+						closeErr := file.Close()
+						if writeErr != nil || closeErr != nil {
+							t.Fatalf("fixture write: %v %v", writeErr, closeErr)
+						}
+					}
 					// Preserve an application customization in a file the recipe edits.
 					path := filepath.Join(dir, "internal/platform/http/server.go")
 					data, err := os.ReadFile(path)
@@ -92,6 +108,32 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 						t.Fatal("file permissions changed")
 					}
 				}
+				for _, path := range []string{"principal.go", "bearer.go", "jwt.go", "resolver.go"} {
+					if _, err := os.Stat(filepath.Join(dir, "internal/auth", path)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				for _, name := range []string{".env.local", ".env.staging", ".env.prod", ".env.example"} {
+					data, err := os.ReadFile(filepath.Join(dir, "env", name))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for _, key := range []string{"APP_AUTH_JWT_ISSUER=", "APP_AUTH_JWT_AUDIENCE="} {
+						if strings.Count(string(data), key) != 1 {
+							t.Fatalf("%s: missing or duplicate %s", name, key)
+						}
+					}
+					if name != ".env.example" && bytes.Contains(data, []byte("APP_AUTH_JWT_SECRET=")) {
+						t.Fatal("secret added to tracked defaults")
+					}
+				}
+				if !atCreation {
+					local, _ := os.ReadFile(filepath.Join(dir, "env/.env.local"))
+					private, _ := os.ReadFile(filepath.Join(dir, "env/.env.local.local"))
+					if !bytes.Contains(local, []byte("APP_AUTH_JWT_ISSUER=custom-issuer")) || string(private) != "APP_AUTH_JWT_SECRET=application-private-secret-with-32-bytes\n" {
+						t.Fatal("auth settings changed")
+					}
+				}
 				before := projectSnapshot(t, dir)
 				if _, added, err := AddModule(dir, "auth"); err != nil || added {
 					t.Fatalf("repeat: %v %v", added, err)
@@ -104,6 +146,9 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 				}
 				if _, err := os.Stat(filepath.Join(dir, "internal/auth/infrastructure/postgres")); !os.IsNotExist(err) {
 					t.Fatal("auth generated a database repository")
+				}
+				if _, err := os.Stat(filepath.Join(dir, "cmd/auth-token")); !os.IsNotExist(err) {
+					t.Fatalf("auth must not generate a token command: %v", err)
 				}
 				modData, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 				if err != nil {
@@ -139,6 +184,9 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 						t.Fatalf("inspect: %v", err)
 					}
 					order := strings.Join(report.Initializers[0].ConstructionOrder, "\n")
+					if !strings.Contains(order, "security/http.NewMiddleware[") || strings.Contains(order, "internal/auth.NewMiddleware") {
+						t.Fatalf("framework middleware missing in %s: %s", env, order)
+					}
 					if !strings.Contains(order, "internal/auth.NewJWTAuthenticator") || !strings.Contains(order, "internal/auth.NewPrincipalResolver") {
 						t.Fatalf("JWT flow missing in %s: %s", env, order)
 					}
@@ -165,7 +213,7 @@ func TestAddAuthConflictsDoNotChangeProject(t *testing.T) {
 				if err := os.MkdirAll(filepath.Join(dir, "internal/auth"), 0755); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.WriteFile(filepath.Join(dir, "internal/auth/auth.go"), []byte("keep"), 0600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, "internal/auth/principal.go"), []byte("keep"), 0600); err != nil {
 					t.Fatal(err)
 				}
 			case "symlink directory":

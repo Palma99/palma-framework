@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+ "strings"
  "context"
  "errors"
  "net/http/httptest"
@@ -70,8 +71,8 @@ func TestBearerExtractionAndConfiguration(t *testing.T){
   if tc.want!=nil{if !errors.Is(err,tc.want){t.Fatalf("extract: %v",err)}}else if err!=nil||credentials.Token!="token"{t.Fatalf("credentials: %+v %v",credentials,err)}
  }
  if _,err:=auth.NewJWTAuthenticator(config.Config{Auth:authconfig.Config{JWTSecret:"short"}});err==nil{t.Fatal("weak secret accepted")}
- authenticator,err:=auth.NewJWTAuthenticator(config.Config{});if err!=nil{t.Fatal(err)}
- if _,err:=authenticator.Authenticate(context.Background(),auth.BearerCredentials{Token:"token"});err==nil||errors.Is(err,security.ErrInvalidCredentials){t.Fatalf("missing secret must be a configuration error: %v",err)}
+ if _,err:=auth.NewJWTAuthenticator(config.Config{});err==nil||!strings.Contains(err.Error(),"APP_AUTH_JWT_SECRET"){t.Fatalf("missing secret must fail construction: %v",err)}
+ authenticator,err:=auth.NewJWTAuthenticator(config.Config{Auth:authconfig.Config{JWTSecret:testSecret}});if err!=nil{t.Fatal(err)}
  ctx,cancel:=context.WithCancel(context.Background());cancel()
  if _,err:=authenticator.Authenticate(ctx,auth.BearerCredentials{});!errors.Is(err,context.Canceled){t.Fatalf("cancellation: %v",err)}
 }

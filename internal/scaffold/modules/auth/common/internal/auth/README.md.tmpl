@@ -13,43 +13,68 @@ storage is independent of this module. The flow is identical in all environments
 
 - `GET /auth/me`: requires a valid JWT and returns the principal.
 - `GET /auth/status`: accepts anonymous requests, but rejects invalid credentials.
-- Existing application routes keep their access rules. Apply `auth.Middleware.Required`
+- Existing application routes keep their access rules. Apply the injected `securityhttp.HandlerMiddleware.Required`
   (stdlib) or `pfwecho.RequiredSecurity` (Echo) to your chosen routes and enforce
   resource policies in application services.
 
+## Application-owned JWT example
+
+This scaffold is a starting point to adapt to your application. The framework
+provides security contracts and HTTP middleware; these generated files own the
+HS256 implementation, claims, principal and configuration. No login flow,
+user storage or signing secret is generated.
+
+- `principal.go`: credentials, JWT claims, verified identity and application principal.
+- `bearer.go`: Authorization header extraction and HTTP Bearer challenge.
+- `jwt.go`: JWT verification and startup configuration validation.
+- `resolver.go`: verified identity to application principal mapping.
+- `config/config.go`: JWT settings and startup validation.
+- `infrastructure/http/controller.go`: example auth endpoints.
+
 ## Configuration and local example
+
+The API reads the project's `env/` files. No terminal
+exports are needed. Issuer and audience default to `palma-api` and are documented
+in `.env.example` and the environment-specific files.
+
+Choose a random signing secret of at least 32 bytes. To obtain one locally:
+
+```sh
+openssl rand -base64 32
+```
+
+Paste the result into `env/.env.local.local` (ignored by Git):
+
+```dotenv
+APP_AUTH_JWT_SECRET=<paste your random secret here>
+```
+
+The loader reads `env/.env`, `env/.env.local` and `env/.env.local.local`, in that
+order; process variables can override them. For staging and production, supply
+separate secrets in `.env.staging.local` and `.env.prod.local` or through your
+deployment's configuration. Never commit signing secrets.
+
+From the project root:
 
 ```sh
 go mod tidy
-# Generate your own random secret; no signing secret is included in the scaffold.
-export APP_AUTH_JWT_SECRET="$(openssl rand -base64 32)"
-export APP_AUTH_JWT_ISSUER=palma-api
-export APP_AUTH_JWT_AUDIENCE=palma-api
 go tool pfw generate -env local
 go test ./...
-# Run this in a terminal with the same configuration:
 go tool pfw run -env local
 ```
 
-In another terminal with the same environment variables, generate a development
-JWT and call the API:
+To call `/auth/me`, obtain a JWT from your application's authentication flow
+that matches the configured signing key, issuer, audience and claims. Token
+issuance belongs to the application.
 
 ```sh
-TOKEN=$(go run ./cmd/auth-token -subject demo-user -roles user,editor)
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/auth/me
+curl -H 'Authorization: Bearer <your JWT>' http://localhost:8080/auth/me
 curl http://localhost:8080/auth/status
 curl -i -H 'Authorization: Bearer invalid' http://localhost:8080/auth/status
 ```
 
-The token helper signs a JWT valid for 15 minutes and runs only in `local`.
-It reads the auth environment/files and does not connect to a database or expose
-an HTTP token endpoint. For real applications, obtain tokens from your login
-flow or issuer. Keep the helper and its signing secret in the development setup.
-
-`APP_AUTH_JWT_SECRET` must contain at least 32 bytes when provided. Issuer and
-audience default to `palma-api`; no secret is supplied by default. Without a
-secret, anonymous optional requests still work, but authentication attempts
-produce a configuration error (500), never an authenticated fallback.
+A missing or shorter-than-32-byte secret stops API startup in every environment
+with a configuration error. There is no demo signing secret or fallback identity.
 
 ## Verification and principal
 
@@ -65,8 +90,12 @@ copy `roles` into `Principal.Roles`. Roles must be an array of strings. No user
 lookup or role query is performed. Extend the typed Claims, VerifiedJWT and
 Principal types to carry application-specific data.
 
-`internal/bootstrap/auth_module.go` contains the generic DI bindings. The
-bootstrap discovers annotated constructors and the shared mapper handles
+`internal/bootstrap/auth_module.go` registers the framework's instantiated
+`securityhttp.NewMiddleware` constructor directly. The bootstrap discovers
+annotated application constructors and `AutoBind` resolves their security
+contracts. Controllers receive `HandlerMiddleware` (stdlib) or
+`RequestAuthenticator` (Echo), so a custom implementation can be selected with
+`pfw.Bind` or a preferred constructor with `pfw.Override`. The shared mapper handles
 401/403 without exposing internal causes. Repeating `pfw add auth` preserves
 customizations; it does not upgrade a previously installed auth recipe.
 

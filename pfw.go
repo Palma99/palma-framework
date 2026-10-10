@@ -7,7 +7,8 @@ package pfw
 type Registration struct{ marker struct{} }
 
 // Constructors registers named constructor functions, whose parameters are their
-// dependencies. Supported results are T, (T, error), and
+// dependencies. Generic functions must have explicit type arguments.
+// Supported results are T, (T, error), and
 // (T, func() error, error) for resources that need cleanup.
 func Constructors(constructors ...any) Registration { return Registration{} }
 

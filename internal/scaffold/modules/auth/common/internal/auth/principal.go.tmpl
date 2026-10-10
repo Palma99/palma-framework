@@ -1,0 +1,16 @@
+package auth
+
+import (
+ "github.com/golang-jwt/jwt/v5"
+)
+
+type BearerCredentials struct { Token string }
+type Claims struct {
+ jwt.RegisteredClaims
+ Roles []string `json:"roles,omitempty"`
+}
+type VerifiedJWT struct { Subject string; Roles []string }
+
+// Principal belongs to the application; extend its fields and claim mapping.
+type Principal struct { UserID string `json:"user_id"`; Roles []string `json:"roles"` }
+

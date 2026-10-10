@@ -1,0 +1,33 @@
+package auth
+
+import (
+ "context"
+ "fmt"
+ "strings"
+ "github.com/golang-jwt/jwt/v5"
+ pfwsecurity "github.com/palma99/palma-framework/security"
+ "{{.Module}}/internal/config"
+)
+
+type JWTAuthenticator struct { key []byte; issuer, audience string }
+// NewJWTAuthenticator validates configuration before the application starts.
+//pfw:coconut
+func NewJWTAuthenticator(cfg config.Config) (*JWTAuthenticator, error) {
+ if err := cfg.Auth.Validate(); err != nil { return nil, err }
+ issuer, audience := cfg.Auth.JWTIssuer, cfg.Auth.JWTAudience
+ if issuer == "" { issuer = "palma-api" }
+ if audience == "" { audience = "palma-api" }
+ return &JWTAuthenticator{key:[]byte(cfg.Auth.JWTSecret),issuer:issuer,audience:audience}, nil
+}
+func (a *JWTAuthenticator) Authenticate(ctx context.Context, credentials BearerCredentials) (VerifiedJWT, error) {
+ if err := ctx.Err(); err != nil { return VerifiedJWT{}, err }
+ claims := &Claims{}
+ token, err := jwt.ParseWithClaims(credentials.Token,claims,func(*jwt.Token)(any,error){ return a.key,nil },
+  jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),jwt.WithIssuer(a.issuer),
+  jwt.WithAudience(a.audience),jwt.WithExpirationRequired(),jwt.WithIssuedAt(),
+ )
+ if err != nil { return VerifiedJWT{}, fmt.Errorf("%w: %w",pfwsecurity.ErrInvalidCredentials,err) }
+ if !token.Valid || strings.TrimSpace(claims.Subject) == "" { return VerifiedJWT{}, pfwsecurity.ErrInvalidCredentials }
+ return VerifiedJWT{Subject:claims.Subject,Roles:append([]string(nil),claims.Roles...)}, nil
+}
+

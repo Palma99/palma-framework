@@ -114,6 +114,13 @@ func emit(pkg *types.Package, initializers []initializer) ([]byte, error) {
 			if qualifier := imp.qualify(ctor.fn.Pkg()); qualifier != "" {
 				callee = qualifier + "." + callee
 			}
+			if len(ctor.typeArgs) > 0 {
+				var arguments []string
+				for _, argument := range ctor.typeArgs {
+					arguments = append(arguments, types.TypeString(argument, imp.qualify))
+				}
+				callee += "[" + strings.Join(arguments, ", ") + "]"
+			}
 			var args []string
 			for _, input := range provider.Inputs {
 				name, err := lookup(init, values, input, provider.Name)

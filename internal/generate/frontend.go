@@ -15,6 +15,7 @@ const markerPath = "github.com/palma99/palma-framework"
 
 type constructor struct {
 	fn       *types.Func
+	typeArgs []types.Type
 	fallible bool
 	cleanup  bool
 }
@@ -287,9 +288,16 @@ func (f *frontend) registration(expr ast.Expr, init *initializer) error {
 		return nil
 	case "Constructors":
 		for _, arg := range call.Args {
-			fn, ok := f.object(arg).(*types.Func)
+			base := unparen(arg)
+			switch indexed := base.(type) {
+			case *ast.IndexExpr:
+				base = unparen(indexed.X)
+			case *ast.IndexListExpr:
+				base = unparen(indexed.X)
+			}
+			fn, ok := f.object(base).(*types.Func)
 			if !ok || fn.Pkg() == nil {
-				return f.errorAt(arg, "provider must be a named, non-generic function")
+				return f.errorAt(arg, "provider must be a named function; generic functions require explicit type arguments")
 			}
 			if err := f.addConstructor(fn, arg, init, true); err != nil {
 				return err
@@ -352,11 +360,38 @@ func (f *frontend) addConstructor(fn *types.Func, node ast.Node, init *initializ
 		return f.errorAt(node, "provider %s is not exported; export it or place the initializer in its package", fn.Name())
 	}
 	sig := fn.Type().(*types.Signature)
+	var typeArgs []types.Type
+	if expr, ok := node.(ast.Expr); ok && manual {
+		var indices []ast.Expr
+		switch indexed := unparen(expr).(type) {
+		case *ast.IndexExpr:
+			indices = []ast.Expr{indexed.Index}
+		case *ast.IndexListExpr:
+			indices = indexed.Indices
+		}
+		if len(indices) > 0 {
+			instantiated, ok := f.pkg.TypesInfo.TypeOf(expr).(*types.Signature)
+			if !ok {
+				return f.errorAt(node, "provider must be an instantiated named function")
+			}
+			sig = instantiated
+			for _, index := range indices {
+				typeArgs = append(typeArgs, types.Unalias(f.pkg.TypesInfo.TypeOf(index)))
+			}
+		}
+	}
 	count := sig.Results().Len()
 	if sig.Recv() != nil || sig.TypeParams().Len() != 0 || sig.Variadic() || count < 1 || count > 3 || (count >= 2 && !isError(sig.Results().At(count-1).Type())) || (count == 3 && !isCleanup(sig.Results().At(1).Type())) {
 		return f.errorAt(node, "provider %s must have signature func(...) T, func(...) (T, error) or func(...) (T, func() error, error)", fn.Name())
 	}
 	name := fn.Pkg().Path() + "." + fn.Name()
+	if len(typeArgs) > 0 {
+		var arguments []string
+		for _, argument := range typeArgs {
+			arguments = append(arguments, types.TypeString(argument, nil))
+		}
+		name += "[" + strings.Join(arguments, ", ") + "]"
+	}
 	for _, scope := range f.scopes {
 		scope.names[name] = true
 	}
@@ -376,7 +411,7 @@ func (f *frontend) addConstructor(fn *types.Func, node ast.Node, init *initializ
 		p.Inputs = append(p.Inputs, sig.Params().At(i).Type())
 	}
 	init.graph.Providers = append(init.graph.Providers, p)
-	init.constructors[name] = constructor{fn: fn, fallible: count >= 2, cleanup: count == 3}
+	init.constructors[name] = constructor{fn: fn, typeArgs: typeArgs, fallible: count >= 2, cleanup: count == 3}
 	return nil
 }
 

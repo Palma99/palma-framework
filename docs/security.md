@@ -162,10 +162,23 @@ pfw.Bind[security.PrincipalResolver[VerifiedSession, AppPrincipal], *AppPrincipa
 pfw.Bind[security.Authorizer[AppPrincipal, Document], *DocumentAuthorizer]()
 ```
 
-Registrare costruttori non generici con parametri/risultati genericamente
-istanziati. Un wrapper applicativo, come NewSecurityMiddleware nell'esempio,
-chiama NewMiddleware con i propri tipi. Il generatore verifica i binding con
-il type system Go: un authenticator di altri C/I non soddisfa il contratto.
+Il middleware del framework può essere registrato direttamente, senza wrapper:
+
+```go
+pfw.Constructors(
+    securityhttp.NewMiddleware[SessionCredentials, VerifiedSession, AppPrincipal],
+)
+pfw.AutoBind()
+```
+
+Il generatore supporta funzioni generiche con tutti gli argomenti di tipo
+espliciti e verifica i contratti con il type system Go. Il mapper è una
+normale dipendenza DI e deve essere registrato dall'applicazione.
+Per stdlib i controller possono dipendere da `securityhttp.HandlerMiddleware`;
+per Echo da `securityhttp.RequestAuthenticator`. `Bind` seleziona un'altra
+implementazione del contratto; `Override(Constructors(...))` dà precedenza a un
+costruttore alternativo, anche genericamente istanziato. La discovery automatica
+continua a richiedere costruttori non generici, perché non sceglie i tipi dell'app.
 Non occorre un service locator o una DI a runtime.
 
 L'[esempio eseguibile](../examples/security/README.md) include tutte le parti,

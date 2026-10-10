@@ -38,3 +38,17 @@ func TestAuthEndpoints(t *testing.T){
   if tc.status==401&&!strings.Contains(w.Header().Get("WWW-Authenticate"),"Bearer"){t.Fatal("bearer challenge missing")}
  }
 }
+
+func TestAuthStartupRequiresSecret(t *testing.T) {
+ env, err := pfw.EnvironmentFromEnv("local")
+ if err != nil { t.Fatal(err) }
+ if env != "local" { t.Skip("startup fixture uses local item storage; constructor validation is tested in every environment") }
+ for _, secret := range []string{"", "short"} {
+  cfg := config.Config{Auth:authconfig.Config{JWTSecret:secret}}
+  server, cleanup, err := bootstrap.Initialize(context.Background(),env,cfg)
+  if cleanup != nil { _ = cleanup() }
+  if server != nil || err == nil || !strings.Contains(err.Error(), "APP_AUTH_JWT_SECRET") {
+   t.Fatalf("invalid auth configuration must stop startup: %v", err)
+  }
+ }
+}

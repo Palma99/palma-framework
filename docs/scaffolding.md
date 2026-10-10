@@ -101,18 +101,31 @@ quelle successive già scelte dall'applicazione. L'autenticazione non richiede r
 - `sub` viene mappato in `Principal.UserID`; `roles` in `Principal.Roles`.
 - Lo stesso flusso JWT viene usato in tutti gli ambienti.
 
-Configurare `APP_AUTH_JWT_SECRET` con un segreto casuale di almeno 32 byte,
-`APP_AUTH_JWT_ISSUER` e `APP_AUTH_JWT_AUDIENCE` (default: `palma-api`). La verifica
-controlla firma, algoritmo HS256, scadenza obbligatoria, issuer, audience,
-subject non vuoto e validità temporale dei claim presenti. Senza secret il
-modulo può essere costruito, ma ogni tentativo di autenticazione fallisce con
-un errore di configurazione (500); non viene usata una chiave demo implicita.
+Il JWT generato è un esempio di proprietà dell'applicazione da adattare, mentre
+il framework fornisce i contratti security e il middleware. I file `principal.go`,
+`bearer.go`, `jwt.go` e `resolver.go` separano tipi, estrazione, verifica e
+mapping del principal. `AuthModule` registra direttamente il costruttore generico
+del middleware del framework; `AutoBind` risolve i contratti applicativi.
+I controller dipendono da interfacce sostituibili tramite `Bind` o `Override`,
+senza un wrapper middleware generato nell’applicazione.
 
-Il comando generato `go run ./cmd/auth-token` crea un JWT di sviluppo di 15 minuti
-usando il secret configurato, soltanto in `local`. Il README del modulo include
-un esempio curl completo. Le rotte applicative si proteggono con il middleware
-scelto e le policy sulle risorse restano nei servizi. Login, refresh, revoca e
-integrazioni con issuer esterni sono flussi applicativi da implementare.
+La ricetta documenta `APP_AUTH_JWT_SECRET`, `APP_AUTH_JWT_ISSUER` e
+`APP_AUTH_JWT_AUDIENCE` in `env/.env.example` e aggiunge i default non sensibili
+(default: `palma-api`) nei file degli ambienti, preservando i valori esistenti.
+Inserire un segreto casuale di almeno 32 byte in `env/.env.local.local` per lo
+sviluppo; usare segreti separati in `env/.env.staging.local` e `env/.env.prod.local`
+o nella configurazione del deployment. I file privati sono ignorati da Git.
+Non servono `export` nel terminale e non viene generato alcun secret.
+
+La verifica controlla firma, algoritmo HS256, scadenza obbligatoria, issuer,
+audience, subject non vuoto e validità temporale dei claim presenti. Un secret
+mancante o troppo corto interrompe l'avvio con un errore di configurazione.
+
+Il README del modulo include esempi curl con un JWT ottenuto dal flusso di
+autenticazione dell'applicazione. Le rotte applicative si proteggono con il
+middleware scelto e le policy sulle risorse restano nei servizi. Emissione dei
+token, login, refresh, revoca e integrazioni con issuer esterni sono flussi
+applicativi da implementare.
 
 Il comando registra `modules = ["auth"]` in `pfw.toml`: ripeterlo è un no-op e
 non sovrascrive le personalizzazioni del modulo. I nuovi scaffold salvano anche

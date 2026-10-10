@@ -27,6 +27,13 @@ type RequestAuthenticator interface {
 	OptionalRequest(*stdhttp.Request) (*stdhttp.Request, error)
 }
 
+// HandlerMiddleware is the replaceable middleware contract for net/http routes.
+// Applications can bind their own implementation through DI.
+type HandlerMiddleware interface {
+	Required(stdhttp.Handler) stdhttp.Handler
+	Optional(stdhttp.Handler) stdhttp.Handler
+}
+
 // ErrorRules maps wrapped security errors to safe HTTP responses. Register these
 // rules in the same mapper used by middleware, controllers and router adapters.
 // Operational errors are left to the mapper's normal fallback.

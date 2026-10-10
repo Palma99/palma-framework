@@ -70,7 +70,17 @@ func authIntegrationPaths(settings moduleSettings) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []string{"pfw.toml", bootstrap + "/compose.go", "internal/config/config.go", "internal/platform/http/server.go", "internal/item/infrastructure/http/error_mapper.go"}, nil
+	envDir := settings.EnvDir
+	if envDir == "" {
+		envDir = "env"
+	}
+	envDir, err = projectRelative(envDir)
+	if err != nil {
+		return nil, err
+	}
+	return []string{"pfw.toml", bootstrap + "/compose.go", "internal/config/config.go", "internal/platform/http/server.go", "internal/item/infrastructure/http/error_mapper.go",
+		envDir + "/.env.example", envDir + "/.env.local", envDir + "/.env.staging", envDir + "/.env.prod",
+		bootstrap + "/api_test.go", bootstrap + "/database_test.go"}, nil
 }
 
 // AddModule locates the module root, prepares all edits, then installs the recipe.
@@ -142,6 +152,9 @@ func AddModule(directory, name string) (string, bool, error) {
 	files := map[string][]byte{"go.mod": moduleData}
 	for _, path := range paths {
 		data, err := readModuleFile(root, path)
+		if os.IsNotExist(err) && strings.HasSuffix(path, "_test.go") {
+			continue
+		}
 		if err != nil {
 			return root, false, fmt.Errorf("unsupported API scaffold integration at %s: %w", path, err)
 		}
@@ -171,7 +184,7 @@ func prepareAuth(files map[string][]byte, options Options) (map[string][]byte, e
 		return nil, err
 	}
 	for _, path := range paths {
-		if files[path] == nil {
+		if files[path] == nil && !strings.HasSuffix(path, "_test.go") {
 			return nil, fmt.Errorf("auth requires integration file %s", path)
 		}
 	}
@@ -191,6 +204,38 @@ func prepareAuth(files map[string][]byte, options Options) (map[string][]byte, e
 			return nil, fmt.Errorf("auth integration in %s: %w", change.path, err)
 		}
 		files[change.path] = data
+	}
+	// Preserve existing values and comments in environment files.
+	for i, path := range paths[5:9] {
+		values := [][2]string{{"APP_AUTH_JWT_ISSUER", "palma-api"}, {"APP_AUTH_JWT_AUDIENCE", "palma-api"}}
+		if i == 0 {
+			values = append([][2]string{{"APP_AUTH_JWT_SECRET", ""}}, values...)
+		}
+		data := files[path]
+		for _, value := range values {
+			pattern := regexp.MustCompile(`(?m)^\s*(?:export\s+)?` + value[0] + `\s*=`)
+			if !pattern.Match(data) {
+				if len(data) > 0 && data[len(data)-1] != '\n' {
+					data = append(data, '\n')
+				}
+				data = append(data, []byte(value[0]+"="+value[1]+"\n")...)
+			}
+		}
+		if i == 0 {
+			data = append(data, []byte("# Auth: set a random secret of at least 32 bytes in the private environment file.\n# For local development use .env.local.local; no signing secret is generated.\n")...)
+		}
+		files[path] = data
+	}
+	// Give the generated API/database fixtures their own test-only signing key.
+	for _, path := range paths[9:] {
+		if files[path] == nil {
+			continue
+		}
+		data, err := integrateAuth(files[path], options.Module, router, "test-config")
+		if err != nil {
+			return nil, fmt.Errorf("auth test integration in %s: %w", path, err)
+		}
+		files[path] = data
 	}
 	moduleFiles, err := renderModuleFiles(options)
 	if err != nil {
@@ -363,6 +408,28 @@ func integrateAuth(source []byte, module, router, kind string) ([]byte, error) {
 	alias, path := "", ""
 	matched := 0
 	switch kind {
+	case "test-config":
+		alias, path = "authconfig", module+"/internal/auth/config"
+		ast.Inspect(file, func(node ast.Node) bool {
+			literal, ok := node.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			selector, ok := literal.Type.(*ast.SelectorExpr)
+			if !ok || selector.Sel.Name != "Config" || !qualifiedImport(file, selector.X, module+"/internal/config", "config") {
+				return true
+			}
+			for _, element := range literal.Elts {
+				if kv, ok := element.(*ast.KeyValueExpr); ok {
+					if name, ok := kv.Key.(*ast.Ident); ok && name.Name == "Auth" {
+						return true
+					}
+				}
+			}
+			edits = append(edits, sourceEdit{offset(literal.Lbrace) + 1, offset(literal.Lbrace) + 1, `Auth: authconfig.Config{JWTSecret:"test-only-secret-with-at-least-32-bytes"},`})
+			matched++
+			return true
+		})
 	case "config":
 		alias, path = "authconfig", module+"/internal/auth/config"
 		ast.Inspect(file, func(node ast.Node) bool {
@@ -469,7 +536,10 @@ func integrateAuth(source []byte, module, router, kind string) ([]byte, error) {
 			})
 		}
 	}
-	if matched != 1 {
+	if kind == "test-config" && matched == 0 {
+		return source, nil
+	}
+	if matched != 1 && !(kind == "test-config" && matched > 0) {
 		return nil, fmt.Errorf("expected one supported %s integration point, found %d; no files changed", kind, matched)
 	}
 	// Refuse alias collisions rather than changing application identifiers.

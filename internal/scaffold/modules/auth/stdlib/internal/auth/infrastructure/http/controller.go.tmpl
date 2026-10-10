@@ -6,12 +6,13 @@ import (
  pfwhttp "github.com/palma99/palma-framework/http"
  "github.com/palma99/palma-framework/logging"
  "github.com/palma99/palma-framework/security"
+ securityhttp "github.com/palma99/palma-framework/security/http"
  "{{.Module}}/internal/auth"
 )
 
-type Controller struct { middleware *auth.Middleware; adapter *pfwhttp.HandlerAdapter }
+type Controller struct { middleware securityhttp.HandlerMiddleware; adapter *pfwhttp.HandlerAdapter }
 //pfw:coconut
-func NewController(middleware *auth.Middleware, mapper pfwhttp.ErrorMapper, logger logging.Logger) *Controller {
+func NewController(middleware securityhttp.HandlerMiddleware, mapper pfwhttp.ErrorMapper, logger logging.Logger) *Controller {
  return &Controller{middleware:middleware, adapter:pfwhttp.NewHandlerAdapter(mapper,logger)}
 }
 func (c *Controller) Register(mux *http.ServeMux) {
