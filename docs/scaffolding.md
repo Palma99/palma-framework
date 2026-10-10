@@ -7,8 +7,7 @@ pfw templates
 ```
 
 - `hello-world`: applicazione minimale che stampa `Hello, world!`, con composition root.
-- `api`: API esagonale con router a scelta, storage in memoria in `local` e
-  repository PostgreSQL in `staging` e `prod`.
+- `api`: API esagonale con router a scelta e repository PostgreSQL in tutti gli ambienti.
 
 ## Dal checkout del framework
 
@@ -85,11 +84,11 @@ docker compose up --build
 
 Air rigenera il wiring DI e ricompila a ogni modifica, escludendo `pfw_gen.go`
 e gli output di build per evitare cicli di reload. Dipendenze Go e cache di build
-restano in volumi dedicati. Prima delle build API in `staging` o `prod` vengono
+restano in volumi dedicati. Prima delle build API in ogni ambiente vengono
 applicate le migration al database di sviluppo.
 
 Docker è il modo di esecuzione, indipendente dall'ambiente dell'applicazione:
-`local` usa memoria, mentre `staging` e `prod` usano PostgreSQL di Compose.
+`local`, `staging` e `prod` usano PostgreSQL di Compose.
 L'ambiente iniziale segue `-env`. Per cambiarlo senza variabili nel terminale,
 copiare il `.env.example` nella root in `.env`, modificare `PFW_ENV` e rilanciare
 `docker compose up --build`. Quel file configura Compose; i file applicativi
@@ -168,6 +167,8 @@ Per l'API creata sopra:
 cd /tmp/palma-api
 go mod tidy
 cp env/.env.example env/.env
+# Avviare PostgreSQL; con -docker: docker compose up -d db
+go tool pfw migrate up -env local
 go tool pfw run -env local
 ```
 
@@ -208,34 +209,33 @@ internal/
     application/             casi d'uso e porta Repository
     infrastructure/
       http/                  handler, DTO e mapping degli errori
-      memory/                implementazione locale in memoria
-      postgres/              repository SQL per staging/prod
+      postgres/              repository SQL per tutti gli ambienti
 ```
 
 Dominio e application non importano Palma né il trasporto HTTP. Le implementazioni dell'infrastruttura
 dipendono dalle porte dell'application; il composition root sceglie e collega
-le implementazioni. Lo storage memory è pronto all'uso e perde i dati al riavvio.
-Il composition root seleziona `memory.Store` in `local` e `postgres.Store` in
-`staging` e `prod`, tramite binding espliciti e `ForEnv("local", ...)`. Il
-repository SQL riceve `database.MainDB` nel costruttore; il provider annotato
-`internal/platform/database.OpenMainDB` è incluso nella discovery. In locale
-il provider non è raggiungibile e non viene aperto alcun pool SQL.
+le implementazioni. Il composition root seleziona `postgres.Store` in tutti gli
+ambienti tramite binding esplicito. Il repository SQL riceve `database.MainDB`
+nel costruttore; il provider annotato `internal/platform/database.OpenMainDB` è
+incluso nella discovery e apre i pool richiesti anche in `local`.
 
 I file dotenv risiedono nella cartella `env/`, configurata con `env_dir = "./env"`
 in `pfw.toml`. Anche il loader applicativo usa `env/` come default se il binario
 viene avviato dalla root del modulo. I progetti includono `env/.env.local`, `env/.env.staging` e `env/.env.prod` con default
-versionabili e DSN vuoti. Dopo i valori comuni di `env/.env`, il loader legge il
+versionabili. `env/.env.local` è configurato per PostgreSQL di sviluppo Docker
+(`localhost:5432`, database/user/password `palma`); dentro Compose il DSN usa
+`db:5432`. Dopo i valori comuni di `env/.env`, il loader legge il
 file dell'ambiente e infine `env/.env.<ambiente>.local`; le variabili del processo
 prevalgono su tutti i file. Le impostazioni di staging/prod azzerano il DSN
 comune: fornire `APP_DB_DSN` separatamente con variabili del processo o nei file
-ignorati `env/.env.staging.local` e `env/.env.prod.local`. Il DSN è obbligatorio fuori da
-`local`; la configurazione fallisce prima dell'avvio in sua assenza.
+ignorati `env/.env.staging.local` e `env/.env.prod.local`. Il DSN è obbligatorio in ogni ambiente; la configurazione fallisce prima dell'avvio in sua assenza.
 
 PostgreSQL pgx è incluso e registrato dal provider. Prima dell'avvio SQL,
-eseguire `go tool pfw migrate up -env staging` oppure `-env prod`. Lo scaffold
+eseguire `go tool pfw migrate up -env local`, `-env staging` oppure `-env prod`. Lo scaffold
 include `migrations/000001_create_items.sql` con sezioni `-- +pfw Up` e
 `-- +pfw Down`; le
-migration non vengono eseguite automaticamente all’avvio. Vedi la
+migration non vengono eseguite automaticamente dal binario; gli script Docker
+di sviluppo le applicano prima delle build. Vedi la
 [guida migration](migrations.md). Gli ambienti staging e prod hanno limiti iniziali del
 pool rispettivamente di 10/2 e 40/10 connessioni aperte/inattive, personalizzabili
 con `APP_DB_*`. `env/.env.example` documenta tutte le opzioni.

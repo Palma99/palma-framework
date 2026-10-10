@@ -33,9 +33,10 @@ PostgreSQL is available as `db:5432` inside Compose and `localhost:5432` on the
 host. The development database/user/password are `palma`. HTTP defaults to
 `http://localhost:8080`; `DEV_HTTP_PORT` and `DEV_DB_PORT` change host ports.
 
-- `local` keeps the API's in-memory storage; PostgreSQL is available but unused.
-- `staging` and `prod` use the Compose PostgreSQL database. Pending migrations
-  are applied before each app build/start, including SQL changes.
+All application environments (`local`, `staging`, `prod`) use PostgreSQL.
+Pending migrations are applied before each app build/start, including SQL changes.
+`env/.env.local` uses `localhost:5432` when running the API on the host; Compose
+overrides that DSN with `db:5432` for container networking.
 
 Compose overrides the listen address and SQL connection settings so environment
 files do not bind HTTP to container localhost or connect to external databases.

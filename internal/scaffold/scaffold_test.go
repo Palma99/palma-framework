@@ -75,6 +75,9 @@ func TestPublishedVersionAndBundledFiles(t *testing.T) {
 	if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.com/app", Environment: "local", FrameworkVersion: "v0.1.0"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := os.Stat(filepath.Join(dir, "internal/item/infrastructure/memory")); !os.IsNotExist(err) {
+		t.Fatal("memory repository was generated")
+	}
 	data, err := os.ReadFile(filepath.Join(dir, "go.mod"))
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +98,7 @@ func TestPublishedVersionAndBundledFiles(t *testing.T) {
 	if file.Module.Mod.Path != "example.com/app" || frameworkVersion != "v0.1.0" || driverVersion != "v5.11.0" || len(file.Replace) != 0 || len(file.Tool) != 1 {
 		t.Fatalf("go.mod: %s", data)
 	}
-	for _, name := range []string{"pfw.toml", ".gitignore", "env/.env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/controller.go", "internal/item/infrastructure/memory/store.go", "internal/platform/database/database.go", "internal/item/infrastructure/postgres/store.go", "migrations/000001_create_items.sql", "env/.env.local", "env/.env.staging", "env/.env.prod"} {
+	for _, name := range []string{"pfw.toml", ".gitignore", "env/.env.example", "README.md", "internal/bootstrap/compose.go", "internal/item/infrastructure/http/controller.go", "internal/platform/database/database.go", "internal/item/infrastructure/postgres/store.go", "migrations/000001_create_items.sql", "env/.env.local", "env/.env.staging", "env/.env.prod"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatal(err)
 		}
@@ -237,7 +240,7 @@ func assertStorageGraph(t *testing.T, plan, env string) {
 	memory := strings.Contains(order, "memory.NewStore")
 	postgres := strings.Contains(order, "postgres.NewStore")
 	database := strings.Contains(order, "OpenMainDB")
-	if (env == "local" && (!memory || postgres || database)) || (env != "local" && (memory || !postgres || !database)) {
+	if memory || !postgres || !database {
 		t.Fatalf("storage graph for %s: %s", env, order)
 	}
 }
@@ -268,7 +271,7 @@ func(m *Mapper)Write(w http.ResponseWriter,err error)error{mapped:=m.Map(err);if
 import("context";"net/http/httptest";"testing";"example.test/starter/internal/bootstrap";"example.test/starter/internal/config";"example.test/starter/internal/platform/custommapper")
 func TestCustomMapperIsInjected(t *testing.T){
  custommapper.Calls.Store(0)
- server,cleanup,err:=bootstrap.Initialize(context.Background(),"local",config.Config{});if err!=nil{t.Fatal(err)};defer cleanup()
+ server,cleanup,err:=bootstrap.Initialize(context.Background(),"local",config.Config{DB:testSQLConfig()});if err!=nil{t.Fatal(err)};defer cleanup()
  response:=httptest.NewRecorder();server.HTTPServer().Handler.ServeHTTP(response,httptest.NewRequest("GET","/items/missing",nil))
  if response.Code!=404||custommapper.Calls.Load()!=1{t.Fatalf("custom mapper was not used: status=%d calls=%d",response.Code,custommapper.Calls.Load())}
 }
@@ -311,7 +314,7 @@ func(l *Logger)With(args ...any)logging.Logger{return &Logger{Logger:l.Logger.Wi
 		"internal/bootstrap/custom_logger_test.go": `package bootstrap_test
 import("context";"net/http/httptest";"testing";"time";"example.test/starter/internal/bootstrap";"example.test/starter/internal/config";"example.test/starter/internal/platform/customlogger")
 func TestLoggerBindingReplacesDefault(t *testing.T){
- server,cleanup,err:=bootstrap.Initialize(context.Background(),"local",config.Config{HTTP:config.HTTPConfig{Address:"127.0.0.1:0",ReadHeaderTimeout:time.Second,ShutdownTimeout:time.Second}})
+ server,cleanup,err:=bootstrap.Initialize(context.Background(),"local",config.Config{DB:testSQLConfig(),HTTP:config.HTTPConfig{Address:"127.0.0.1:0",ReadHeaderTimeout:time.Second,ShutdownTimeout:time.Second}})
  if err!=nil{t.Fatal(err)};defer cleanup()
  logger,ok:=server.Logger().(*customlogger.Logger);if !ok{t.Fatalf("logger: %T",server.Logger())}
  if err:=server.Start(context.Background());err!=nil{t.Fatal(err)}

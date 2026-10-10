@@ -27,7 +27,7 @@ type Template struct{ Name, Description, Entry string }
 func Templates() []Template {
 	return []Template{
 		{"hello-world", "Minimal application that prints Hello, world!", "./cmd/app"},
-		{"api", "HTTP API: memory storage in local, PostgreSQL in staging/prod", "./cmd/api"},
+		{"api", "HTTP API with PostgreSQL storage in every environment", "./cmd/api"},
 	}
 }
 

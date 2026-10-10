@@ -77,8 +77,9 @@ go tool pfw migrate up -env staging -dsn-env BILLING_DB_DSN -dir ./billing/migra
 ```
 
 Ogni database fisico ha una propria tabella di tracking. Due directory diverse
-non costituiscono namespace indipendenti nello stesso database. In `local` lo
-scaffold usa memoria e non configura un DSN SQL: non ci sono migration da eseguire.
+non costituiscono namespace indipendenti nello stesso database. Lo scaffold usa
+PostgreSQL anche in `local`, con il DSN del database di sviluppo Docker: eseguire
+`go tool pfw migrate up -env local` prima dell’avvio fuori da Compose.
 Il tool non deduce il backend dal nome dell'ambiente; richiede sempre un DSN.
 
 ## Tracking, concorrenza ed errori

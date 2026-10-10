@@ -64,10 +64,8 @@ func Load(env pfw.Environment) (Config, error) {
 
 func (c Config) ValidateEnvironment(env pfw.Environment) error {
  switch env {
- case "local":
-  return nil
- case "staging", "prod":
-  if strings.TrimSpace(c.DB.DSN) == "" { return pfwconfig.Invalid("DB.DSN", "required in staging and prod") }
+ case "local", "staging", "prod":
+  if strings.TrimSpace(c.DB.DSN) == "" { return pfwconfig.Invalid("DB.DSN", "required in local, staging and prod") }
   return nil
  default:
   return pfwconfig.Invalid("Environment", "must be local, staging or prod")

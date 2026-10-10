@@ -53,7 +53,8 @@ func TestEnvironmentConfiguration(t *testing.T) {
  // A shared DSN must not accidentally become the staging/prod credential.
  if err:=os.WriteFile(filepath.Join(dir,".env"),[]byte("APP_DB_DSN=shared\n"),0600);err!=nil { t.Fatal(err) }
  local,err:=load("local",nil)
- if err!=nil || local.DB.DSN!="" || local.HTTP.Address!="127.0.0.1:8080" { t.Fatalf("local configuration: %+v %v",local,err) }
+ if err!=nil || local.DB.DSN!="postgres://palma:palma@localhost:5432/palma?sslmode=disable" || local.HTTP.Address!="127.0.0.1:8080" { t.Fatalf("local configuration: %+v %v",local,err) }
+ if _,err:=load("local",map[string]string{"APP_DB_DSN":""});err==nil || !strings.Contains(err.Error(),"DB.DSN") { t.Fatalf("local accepted a missing DSN: %v",err) }
  for _, env:=range []pfw.Environment{"staging","prod"} {
   if _,err:=load(env,nil);err==nil || !strings.Contains(err.Error(),"DB.DSN") { t.Fatalf("%s accepted a missing DSN: %v",env,err) }
   if err:=os.WriteFile(filepath.Join(dir,".env."+string(env)+".local"),[]byte("APP_DB_DSN="+string(env)+"-secret\n"),0600);err!=nil { t.Fatal(err) }

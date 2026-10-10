@@ -13,6 +13,7 @@ use cases and repository port are independent of the router.
 ```sh
 go mod tidy
 cp env/.env.example env/.env
+go tool pfw migrate up -env {{.Environment}}
 go tool pfw run -env {{.Environment}}
 ```
 
@@ -27,13 +28,13 @@ The composition declares three environments:
 
 | Environment | Repository | Configuration |
 | --- | --- | --- |
-| `local` | In memory; no SQL pool is opened | `env/.env.local` |
+| `local` | PostgreSQL (Docker development database) | `env/.env.local` |
 | `staging` | PostgreSQL | `env/.env.staging` |
 | `prod` | PostgreSQL | `env/.env.prod` |
 
 Local is the default when creating an API project. `-env` chooses the initial
-runtime/generation default from these three names. Data in local is lost on
-restart; staging and prod persist items in their respective databases.
+runtime/generation default from these three names. All environments use the
+SQL repository; data persists in their configured PostgreSQL database.
 
 ## Environment configuration
 
@@ -44,8 +45,12 @@ the module root. Override it with `-env-dir` or `PFW_ENV_DIR`.
 Copy `env/.env.example` to `env/.env` for common settings. The loader applies `env/.env`,
 `env/.env.<environment>` and `env/.env.<environment>.local` in that order; process
 variables take precedence over every file. The generated environment files
-contain defaults and blank DSNs. They intentionally override any shared DSN so
-staging and prod each require an explicit database configuration.
+contain defaults. `env/.env.local` connects to the Docker development database
+at `localhost:5432` with database/user/password `palma`. Start PostgreSQL before
+running the API; with `-docker`, use `docker compose up -d db` to run only the DB
+and keep the app on the host. If `DEV_DB_PORT` changes, update the host DSN too.
+Inside Compose the DSN is overridden to use `db:5432`.
+Staging/prod files contain blank DSNs so they require explicit configuration.
 
 Supply `APP_DB_DSN` through process variables or an ignored override file:
 
@@ -60,10 +65,11 @@ The initial pool limits are 10 open / 2 idle connections in staging and 40 open 
 all timeout and pool settings. The shared `env/.env` and private override files are
 ignored by Git; `env/.env.local`, `env/.env.staging` and `env/.env.prod` are tracked defaults.
 
-Before starting staging or prod, apply the bundled migration explicitly to the
+Before starting the API in any environment, apply the bundled migration explicitly to the
 selected primary database:
 
 ```sh
+go tool pfw migrate up -env local
 go tool pfw migrate status -env staging
 go tool pfw migrate up -env staging
 go tool pfw migrate up -env prod
@@ -77,7 +83,7 @@ go tool pfw run -env staging
 go tool pfw run -env prod
 ```
 
-A missing DSN in staging/prod fails configuration before opening pools or HTTP.
+A missing DSN in any environment fails configuration before opening pools or HTTP.
 
 ## Database connection
 
@@ -132,8 +138,7 @@ run automatically during API startup. For another database, use `-dsn-env` and
 - `internal/item/domain`: entities and invariants; no framework or transport imports.
 - `internal/item/application`: use cases and output port; depends on the domain.
 - `internal/item/infrastructure/http`: HTTP infrastructure, DTOs, JSON decoding and error mapping.
-- `internal/item/infrastructure/memory`: concurrency-safe local storage.
-- `internal/item/infrastructure/postgres`: persistent SQL repository for staging/prod.
+- `internal/item/infrastructure/postgres`: persistent SQL repository for all environments.
 - `migrations`: versioned SQL schema changes.
 - `env`: environment defaults and private dotenv overrides.
 - `internal/config`: typed configuration with validation and dotenv loading.
@@ -188,14 +193,14 @@ The CLI is pinned through the `tool` directive in go.mod. A local framework
 replacement requires that checkout; replace it with a published version when
 sharing the project independently.
 
-The bindings select Postgres by default and override it with memory through
-`pfw.ForEnv("local", ...)`. These rules belong to this starter's composition;
+The bindings select Postgres in every environment. This choice belongs to the
+starter's composition;
 the framework itself does not infer storage from environment names. Generate
 wiring again before building for a different environment. The binary rejects
 a runtime environment that differs from its generated graph.
 
 The generated tests use `PFW_ENV` (default `local`) to match the selected graph.
-They exercise the actual SQL repository with a local test driver in staging/prod,
+They exercise the actual SQL repository with a local test driver in all environments,
 without connecting to external databases.
 
 `pfw.toml` configures the bootstrap and main package paths, relative to the module

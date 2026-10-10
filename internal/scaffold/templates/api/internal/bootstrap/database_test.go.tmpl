@@ -84,7 +84,6 @@ func TestDatabaseSelectionAndCleanup(t *testing.T) {
  if err != nil { t.Fatal(err) }
  t.Cleanup(func(){ _ = cleanup() })
  want := int32(2)
- if env == "local" { want = 0 }
  if opened.Load()!=want || closed.Load()!=0 { t.Fatalf("%s pools: opened=%d closed=%d",env,opened.Load(),closed.Load()) }
  if err:=cleanup();err!=nil { t.Fatal(err) }
  if err:=cleanup();err!=nil { t.Fatal(err) }
@@ -97,11 +96,6 @@ func TestDatabaseStartupFailure(t *testing.T) {
  cfg := config.Config{DB:testSQLConfig()}
  cfg.DB.ReplicaDSN="fail"
  server, cleanup, err := bootstrap.Initialize(context.Background(),env,cfg)
- if env=="local" {
-  if err!=nil { t.Fatal(err) };defer cleanup()
-  if opened.Load()!=0 { t.Fatal("local opened a SQL pool") }
-  return
- }
  if server!=nil || cleanup!=nil || !errors.Is(err,errPing) || opened.Load()!=2 || closed.Load()!=2 {
   t.Fatalf("partial initialization: opened=%d closed=%d err=%v",opened.Load(),closed.Load(),err)
  }

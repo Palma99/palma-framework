@@ -24,7 +24,7 @@ var migrateCommand = command{
 	usage:       "migrate <create|up|down|status> [options] [name]",
 	description: "Create and manage versioned PostgreSQL migrations",
 	examples:    []string{"go tool pfw migrate create add_users", "go tool pfw migrate up -env staging", "go tool pfw migrate status -env prod", "go tool pfw migrate down -env staging -steps 1"},
-	notes:       []string{"SQL files use <version>_<name>.sql with -- +pfw Up and -- +pfw Down sections. Each migration runs in a transaction on the primary database.", "Directory defaults to pfw.toml migrations_dir or ./migrations. Configuration uses the same environment directory as run.", "Down defaults to one version. Up applies all pending versions unless -steps is set. Local memory environments have no SQL schema to migrate.", "Migration files cannot contain transaction control or statements that require execution outside a transaction."},
+	notes:       []string{"SQL files use <version>_<name>.sql with -- +pfw Up and -- +pfw Down sections. Each migration runs in a transaction on the primary database.", "Directory defaults to pfw.toml migrations_dir or ./migrations. Configuration uses the same environment directory as run.", "Down defaults to one version. Up applies all pending versions unless -steps is set. Migration actions require a primary PostgreSQL DSN.", "Migration files cannot contain transaction control or statements that require execution outside a transaction."},
 	run:         runMigrate,
 }
 
@@ -132,7 +132,7 @@ func runMigrate(ctx context.Context, args []string, stdout, stderr io.Writer) (e
 	}
 	dsn := lookup(*dsnKey)
 	if strings.TrimSpace(dsn) == "" {
-		return fmt.Errorf("migrate: %s is required in environment %q; memory storage has no SQL migrations", *dsnKey, env)
+		return fmt.Errorf("migrate: %s is required in environment %q", *dsnKey, env)
 	}
 	if selected := lookup("APP_DB_DRIVER"); selected != "" && selected != "pgx" {
 		return errors.New("migrate: this backend supports PostgreSQL via pgx only")

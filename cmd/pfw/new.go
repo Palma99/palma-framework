@@ -95,7 +95,11 @@ func runNew(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	if *docker {
 		fmt.Fprintln(stdout, "  docker compose up --build\n\nSee docker/README.md to select the app environment and configure development services.")
 	} else {
-		fmt.Fprintf(stdout, "  go mod tidy\n  go tool pfw run -env %s %s\n", *env, entry)
+		fmt.Fprintln(stdout, "  go mod tidy")
+		if *name == "api" {
+			fmt.Fprintf(stdout, "  go tool pfw migrate up -env %s\n", *env)
+		}
+		fmt.Fprintf(stdout, "  go tool pfw run -env %s %s\n", *env, entry)
 	}
 	if *auth {
 		fmt.Fprintln(stdout, "\nAuth module included. See internal/auth/README.md for application security integration.")

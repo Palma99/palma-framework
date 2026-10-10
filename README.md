@@ -63,7 +63,7 @@ go run ./cmd/pfw new -template api -module example.com/myapi \
 
 Sono disponibili `hello-world` e `api` (architettura esagonale).
 Per `api`, `-router stdlib` è il default; `-router echo` genera la variante Echo v5.
-Lo scaffold configura `local` (memoria), `staging` e `prod` (PostgreSQL), con
+Lo scaffold usa PostgreSQL in `local`, `staging` e `prod`, con
 file di configurazione distinti e `local` come ambiente iniziale predefinito.
 La [guida ai template](docs/scaffolding.md) descrive creazione, dipendenze e avvio.
 

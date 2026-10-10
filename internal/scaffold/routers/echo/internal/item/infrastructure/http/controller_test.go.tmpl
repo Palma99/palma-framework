@@ -8,11 +8,12 @@ import (
  pfwecho "github.com/palma99/palma-framework/transport/echo"
  itemhttp "{{.Module}}/internal/item/infrastructure/http"
  "{{.Module}}/internal/item/application"
- "{{.Module}}/internal/item/infrastructure/memory"
+ "context"
+ "{{.Module}}/internal/item/domain"
 )
 
 func TestControllerMountAndMiddleware(t *testing.T) {
- controller := itemhttp.NewController(application.NewService(memory.NewStore()))
+ controller := itemhttp.NewController(application.NewService(repositoryStub{}))
  router := echo.New()
  router.HTTPErrorHandler = pfwecho.ErrorHandler(itemhttp.NewErrorMapper(), nil)
  controller.Register(router.Group("/api/v1/items"))
@@ -31,3 +32,9 @@ func TestControllerMountAndMiddleware(t *testing.T) {
  if created.Code != 201 || !strings.HasPrefix(location, "/api/v1/items/") { t.Fatalf("location: %d %q", created.Code, location) }
  if w := request("GET", location, ""); w.Code != 200 || w.Body.String() != created.Body.String() { t.Fatalf("get: %d %s", w.Code, w.Body) }
 }
+
+// A fixed test double isolates route mounting and middleware from persistence.
+type repositoryStub struct{}
+func (repositoryStub) List(context.Context) ([]domain.Item,error) { return []domain.Item{},nil }
+func (repositoryStub) Get(_ context.Context,id string) (domain.Item,error) { return domain.Item{ID:id,Name:"Ada"},nil }
+func (repositoryStub) Save(_ context.Context,item domain.Item) (domain.Item,error) { item.ID="1";return item,nil }
