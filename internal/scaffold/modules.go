@@ -19,15 +19,13 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 	"golang.org/x/mod/modfile"
-	"golang.org/x/mod/semver"
-	"golang.org/x/tools/go/ast/astutil"
 )
 
 // Module describes an optional scaffold feature. Auth is the first recipe.
 type Module struct{ Name, Description string }
 
 func Modules() []Module {
-	return []Module{{"auth", "Typed bearer JWT authentication with principals from verified claims"}}
+	return []Module{{"auth", "Application principal and dependency injection extension point"}}
 }
 
 type moduleSettings struct {
@@ -70,17 +68,7 @@ func authIntegrationPaths(settings moduleSettings) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	envDir := settings.EnvDir
-	if envDir == "" {
-		envDir = "env"
-	}
-	envDir, err = projectRelative(envDir)
-	if err != nil {
-		return nil, err
-	}
-	return []string{"pfw.toml", bootstrap + "/compose.go", "internal/config/config.go", "internal/platform/http/server.go", "internal/item/infrastructure/http/error_mapper.go",
-		envDir + "/.env.example", envDir + "/.env.local", envDir + "/.env.staging", envDir + "/.env.prod",
-		bootstrap + "/api_test.go", bootstrap + "/database_test.go"}, nil
+	return []string{"pfw.toml", bootstrap + "/compose.go"}, nil
 }
 
 // AddModule locates the module root, prepares all edits, then installs the recipe.
@@ -152,9 +140,6 @@ func AddModule(directory, name string) (string, bool, error) {
 	files := map[string][]byte{"go.mod": moduleData}
 	for _, path := range paths {
 		data, err := readModuleFile(root, path)
-		if os.IsNotExist(err) && strings.HasSuffix(path, "_test.go") {
-			continue
-		}
 		if err != nil {
 			return root, false, fmt.Errorf("unsupported API scaffold integration at %s: %w", path, err)
 		}
@@ -184,71 +169,28 @@ func prepareAuth(files map[string][]byte, options Options) (map[string][]byte, e
 		return nil, err
 	}
 	for _, path := range paths {
-		if files[path] == nil && !strings.HasSuffix(path, "_test.go") {
+		if files[path] == nil {
 			return nil, fmt.Errorf("auth requires integration file %s", path)
 		}
 	}
-	router, err := detectAuthRouter(files["internal/platform/http/server.go"])
+	data, err := integrateAuth(files[paths[1]])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("auth integration in %s: %w", paths[1], err)
 	}
-	if options.Router != "" && options.Router != router {
-		return nil, errors.New("configured router does not match the API source")
-	}
-	options.Router = router
-	for _, change := range []struct{ path, kind string }{
-		{paths[1], "bootstrap"}, {paths[2], "config"}, {paths[3], "routes"}, {paths[4], "mapper"},
-	} {
-		data, err := integrateAuth(files[change.path], options.Module, router, change.kind)
-		if err != nil {
-			return nil, fmt.Errorf("auth integration in %s: %w", change.path, err)
-		}
-		files[change.path] = data
-	}
-	// Preserve existing values and comments in environment files.
-	for i, path := range paths[5:9] {
-		values := [][2]string{{"APP_AUTH_JWT_ISSUER", "palma-api"}, {"APP_AUTH_JWT_AUDIENCE", "palma-api"}}
-		if i == 0 {
-			values = append([][2]string{{"APP_AUTH_JWT_SECRET", ""}}, values...)
-		}
-		data := files[path]
-		for _, value := range values {
-			pattern := regexp.MustCompile(`(?m)^\s*(?:export\s+)?` + value[0] + `\s*=`)
-			if !pattern.Match(data) {
-				if len(data) > 0 && data[len(data)-1] != '\n' {
-					data = append(data, '\n')
-				}
-				data = append(data, []byte(value[0]+"="+value[1]+"\n")...)
-			}
-		}
-		if i == 0 {
-			data = append(data, []byte("# Auth: set a random secret of at least 32 bytes in the private environment file.\n# For local development use .env.local.local; no signing secret is generated.\n")...)
-		}
-		files[path] = data
-	}
-	// Give the generated API/database fixtures their own test-only signing key.
-	for _, path := range paths[9:] {
-		if files[path] == nil {
-			continue
-		}
-		data, err := integrateAuth(files[path], options.Module, router, "test-config")
-		if err != nil {
-			return nil, fmt.Errorf("auth test integration in %s: %w", path, err)
-		}
-		files[path] = data
-	}
+	files[paths[1]] = data
+
 	moduleFiles, err := renderModuleFiles(options)
 	if err != nil {
 		return nil, err
 	}
-	// Keep the endpoint test with a relocated bootstrap package.
+	// Keep the module declaration with a relocated bootstrap package.
 	if paths[1] != "internal/bootstrap/compose.go" {
 		bootstrapDir := strings.TrimSuffix(paths[1], "/compose.go")
 		parsed, err := parser.ParseFile(token.NewFileSet(), "compose.go", files[paths[1]], 0)
 		if err != nil {
 			return nil, err
 		}
-		for _, name := range []string{"auth_test.go", "auth_module.go"} {
+		for _, name := range []string{"auth_module.go"} {
 			data := moduleFiles["internal/bootstrap/"+name]
 			data = bytes.ReplaceAll(data, []byte("package bootstrap"), []byte("package "+parsed.Name.Name))
 			data = bytes.ReplaceAll(data, []byte(options.Module+"/internal/bootstrap"), []byte(options.Module+"/"+bootstrapDir))
@@ -261,27 +203,6 @@ func prepareAuth(files map[string][]byte, options Options) (map[string][]byte, e
 			return nil, fmt.Errorf("auth file already exists: %s", path)
 		}
 		files[path] = data
-	}
-	module, err := modfile.Parse("go.mod", files["go.mod"], nil)
-	if err != nil {
-		return nil, err
-	}
-	const jwtModule = "github.com/golang-jwt/jwt/v5"
-	// Preserve newer selections, but ensure the generated parser API is available.
-	found := false
-	for _, requirement := range module.Require {
-		if requirement.Mod.Path == jwtModule {
-			found = semver.Compare(requirement.Mod.Version, "v5.3.1") >= 0
-		}
-	}
-	if !found {
-		if err := module.AddRequire(jwtModule, "v5.3.1"); err != nil {
-			return nil, err
-		}
-	}
-	files["go.mod"], err = module.Format()
-	if err != nil {
-		return nil, err
 	}
 	settings.Modules = append(settings.Modules, "auth")
 	var names []string
@@ -309,7 +230,7 @@ func prepareAuth(files map[string][]byte, options Options) (map[string][]byte, e
 
 func renderModuleFiles(options Options) (map[string][]byte, error) {
 	files := map[string][]byte{}
-	for _, root := range []string{"modules/auth/common", "modules/auth/" + options.Router} {
+	for _, root := range []string{"modules/auth/common"} {
 		err := fs.WalkDir(bundled, root, func(path string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil || entry.IsDir() {
 				return walkErr
@@ -349,34 +270,6 @@ type sourceEdit struct {
 	text       string
 }
 
-func detectAuthRouter(source []byte) (string, error) {
-	file, err := parser.ParseFile(token.NewFileSet(), "server.go", source, parser.ParseComments)
-	if err != nil {
-		return "", err
-	}
-	for _, declaration := range file.Decls {
-		fn, ok := declaration.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "Routes" || fn.Type.Results == nil || len(fn.Type.Results.List) != 1 {
-			continue
-		}
-		pointer, ok := fn.Type.Results.List[0].Type.(*ast.StarExpr)
-		if !ok {
-			continue
-		}
-		selector, ok := pointer.X.(*ast.SelectorExpr)
-		if !ok {
-			continue
-		}
-		if selector.Sel.Name == "Echo" && qualifiedImport(file, selector.X, "github.com/labstack/echo/v5", "echo") {
-			return "echo", nil
-		}
-		if selector.Sel.Name == "ServeMux" && qualifiedImport(file, selector.X, "net/http", "http") {
-			return "stdlib", nil
-		}
-	}
-	return "", errors.New("auth requires Routes returning *http.ServeMux or *echo.Echo")
-}
-
 func qualifiedImport(file *ast.File, expression ast.Expr, path, defaultName string) bool {
 	id, ok := expression.(*ast.Ident)
 	if !ok {
@@ -397,177 +290,39 @@ func qualifiedImport(file *ast.File, expression ast.Expr, path, defaultName stri
 }
 
 // Edit only named integration points; preserve surrounding application code.
-func integrateAuth(source []byte, module, router, kind string) ([]byte, error) {
+func integrateAuth(source []byte) ([]byte, error) {
 	fset := token.NewFileSet()
-	file, err := parser.ParseFile(fset, "integration.go", source, parser.ParseComments)
+	file, err := parser.ParseFile(fset, "compose.go", source, parser.ParseComments)
 	if err != nil {
 		return nil, err
 	}
-	offset := func(pos token.Pos) int { return fset.Position(pos).Offset }
+	if file.Scope.Lookup("AuthModule") != nil {
+		return nil, errors.New("AuthModule declaration already exists")
+	}
 	var edits []sourceEdit
-	alias, path := "", ""
-	matched := 0
-	switch kind {
-	case "test-config":
-		alias, path = "authconfig", module+"/internal/auth/config"
-		ast.Inspect(file, func(node ast.Node) bool {
-			literal, ok := node.(*ast.CompositeLit)
-			if !ok {
-				return true
-			}
-			selector, ok := literal.Type.(*ast.SelectorExpr)
-			if !ok || selector.Sel.Name != "Config" || !qualifiedImport(file, selector.X, module+"/internal/config", "config") {
-				return true
-			}
-			for _, element := range literal.Elts {
-				if kv, ok := element.(*ast.KeyValueExpr); ok {
-					if name, ok := kv.Key.(*ast.Ident); ok && name.Name == "Auth" {
-						return true
-					}
-				}
-			}
-			edits = append(edits, sourceEdit{offset(literal.Lbrace) + 1, offset(literal.Lbrace) + 1, `Auth: authconfig.Config{JWTSecret:"test-only-secret-with-at-least-32-bytes"},`})
-			matched++
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
 			return true
-		})
-	case "config":
-		alias, path = "authconfig", module+"/internal/auth/config"
-		ast.Inspect(file, func(node ast.Node) bool {
-			spec, ok := node.(*ast.TypeSpec)
-			if !ok || spec.Name.Name != "Config" {
-				return true
-			}
-			structure, ok := spec.Type.(*ast.StructType)
-			if !ok {
-				return false
-			}
-			for _, field := range structure.Fields.List {
-				for _, name := range field.Names {
-					if name.Name == "Auth" {
-						return false
-					}
-				}
-			}
-			edits = append(edits, sourceEdit{offset(structure.Fields.Opening) + 1, offset(structure.Fields.Opening) + 1, "\nAuth authconfig.Config `envPrefix:\"AUTH_\"`\n"})
-			matched++
-			return false
-		})
-	case "bootstrap":
-		if file.Scope.Lookup("AuthModule") != nil {
-			return nil, errors.New("AuthModule declaration already exists")
 		}
-		ast.Inspect(file, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			fun := call.Fun
-			if index, ok := fun.(*ast.IndexExpr); ok {
-				fun = index.X
-			}
-			selector, ok := fun.(*ast.SelectorExpr)
-			if !ok || selector.Sel.Name != "BuildWithCleanup" || !qualifiedImport(file, selector.X, FrameworkModule, "pfw") {
-				return true
-			}
-			edits = append(edits, sourceEdit{offset(call.Lparen) + 1, offset(call.Lparen) + 1, "\nAuthModule,\n"})
-			matched++
-			return false
-		})
-	case "routes":
-		alias, path = "authhttp", module+"/internal/auth/infrastructure/http"
-		for _, declaration := range file.Decls {
-			fn, ok := declaration.(*ast.FuncDecl)
-			if !ok || fn.Name.Name != "Routes" || fn.Body == nil || fn.Recv != nil {
-				continue
-			}
-			for _, field := range fn.Type.Params.List {
-				for _, name := range field.Names {
-					if name.Name == "authRoutes" {
-						return nil, errors.New("authRoutes parameter already exists")
-					}
-				}
-			}
-			if len(fn.Body.List) == 0 {
-				continue
-			}
-			ret, ok := fn.Body.List[len(fn.Body.List)-1].(*ast.ReturnStmt)
-			if !ok || len(ret.Results) != 1 {
-				continue
-			}
-			variable, ok := ret.Results[0].(*ast.Ident)
-			if !ok {
-				continue
-			}
-			prefix := ", "
-			if len(fn.Type.Params.List) == 0 {
-				prefix = ""
-			}
-			edits = append(edits,
-				sourceEdit{offset(fn.Type.Params.Closing), offset(fn.Type.Params.Closing), prefix + "authRoutes *authhttp.Controller"},
-				sourceEdit{offset(ret.Pos()), offset(ret.Pos()), "authRoutes.Register(" + variable.Name + ")\n"},
-			)
-			matched++
+		fun := call.Fun
+		if index, ok := fun.(*ast.IndexExpr); ok {
+			fun = index.X
 		}
-	case "mapper":
-		alias, path = "securityhttp", FrameworkModule+"/security/http"
-		for _, declaration := range file.Decls {
-			fn, ok := declaration.(*ast.FuncDecl)
-			if !ok || fn.Name.Name != "NewErrorMapper" || fn.Body == nil {
-				continue
-			}
-			ast.Inspect(fn.Body, func(node ast.Node) bool {
-				call, ok := node.(*ast.CallExpr)
-				if !ok {
-					return true
-				}
-				selector, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || selector.Sel.Name != "NewMapper" || call.Ellipsis.IsValid() || !qualifiedImport(file, selector.X, FrameworkModule+"/http", "http") {
-					return true
-				}
-				qualifier, ok := selector.X.(*ast.Ident)
-				if !ok {
-					return true
-				}
-				arguments := string(source[offset(call.Lparen)+1 : offset(call.Rparen)])
-				text := "append(securityhttp.ErrorRules(), []" + qualifier.Name + ".Rule{" + arguments + "}...)..."
-				edits = append(edits, sourceEdit{offset(call.Lparen) + 1, offset(call.Rparen), text})
-				matched++
-				return false
-			})
+		selector, ok := fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "BuildWithCleanup" || !qualifiedImport(file, selector.X, FrameworkModule, "pfw") {
+			return true
 		}
+		position := fset.Position(call.Lparen).Offset + 1
+		edits = append(edits, sourceEdit{position, position, "\nAuthModule,\n"})
+		return false
+	})
+	if len(edits) != 1 {
+		return nil, fmt.Errorf("expected one supported bootstrap integration point, found %d; no files changed", len(edits))
 	}
-	if kind == "test-config" && matched == 0 {
-		return source, nil
-	}
-	if matched != 1 && !(kind == "test-config" && matched > 0) {
-		return nil, fmt.Errorf("expected one supported %s integration point, found %d; no files changed", kind, matched)
-	}
-	// Refuse alias collisions rather than changing application identifiers.
-	for _, imp := range file.Imports {
-		if imp.Name != nil && imp.Name.Name == alias {
-			return nil, fmt.Errorf("import alias %s already exists", alias)
-		}
-	}
-	if alias != "" && file.Scope.Lookup(alias) != nil {
-		return nil, fmt.Errorf("identifier %s already exists", alias)
-	}
-	sort.Slice(edits, func(i, j int) bool { return edits[i].start > edits[j].start })
-	for _, edit := range edits {
-		source = append(append(append([]byte(nil), source[:edit.start]...), []byte(edit.text)...), source[edit.end:]...)
-	}
-	fset = token.NewFileSet()
-	file, err = parser.ParseFile(fset, "integration.go", source, parser.ParseComments)
-	if err != nil {
-		return nil, err
-	}
-	if path != "" {
-		astutil.AddNamedImport(fset, file, alias, path)
-	}
-	var result bytes.Buffer
-	if err := format.Node(&result, fset, file); err != nil {
-		return nil, err
-	}
-	return format.Source(result.Bytes())
+	edit := edits[0]
+	source = append(append(append([]byte(nil), source[:edit.start]...), []byte(edit.text)...), source[edit.end:]...)
+	return format.Source(source)
 }
 
 func checkModulePath(root, relative string) error {

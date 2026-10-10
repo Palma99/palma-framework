@@ -63,22 +63,6 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 					t.Fatal(err)
 				}
 				if !atCreation {
-					// Preserve environment values and private signing configuration.
-					for _, fixture := range []struct{ path, content string }{
-						{"env/.env.local", "# custom auth defaults\nAPP_AUTH_JWT_ISSUER=custom-issuer\nAPP_AUTH_JWT_AUDIENCE=custom-audience\n"},
-						{"env/.env.local.local", "APP_AUTH_JWT_SECRET=application-private-secret-with-32-bytes\n"},
-					} {
-						path := filepath.Join(dir, fixture.path)
-						file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-						if err != nil {
-							t.Fatal(err)
-						}
-						_, writeErr := file.WriteString(fixture.content)
-						closeErr := file.Close()
-						if writeErr != nil || closeErr != nil {
-							t.Fatalf("fixture write: %v %v", writeErr, closeErr)
-						}
-					}
 					// Preserve an application customization in a file the recipe edits.
 					path := filepath.Join(dir, "internal/platform/http/server.go")
 					data, err := os.ReadFile(path)
@@ -92,9 +76,19 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 					if err := os.Chmod(path, 0600); err != nil {
 						t.Fatal(err)
 					}
+					baseline := projectSnapshot(t, dir)
 					root, added, err := AddModule(filepath.Join(dir, "internal/item"), "auth")
 					if err != nil || !added {
 						t.Fatalf("add: %s %v %v", root, added, err)
+					}
+					installed := projectSnapshot(t, dir)
+					for path, original := range baseline {
+						if path == "pfw.toml" || path == "internal/bootstrap/compose.go" {
+							continue
+						}
+						if installed[path] != original {
+							t.Fatalf("auth changed existing file %s", path)
+						}
 					}
 					data, err = os.ReadFile(path)
 					if err != nil {
@@ -108,32 +102,21 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 						t.Fatal("file permissions changed")
 					}
 				}
-				for _, path := range []string{"principal.go", "bearer.go", "jwt.go", "resolver.go"} {
-					if _, err := os.Stat(filepath.Join(dir, "internal/auth", path)); err != nil {
+				for _, path := range []string{"internal/auth/principal.go", "internal/auth/README.md", "internal/bootstrap/auth_module.go"} {
+					if _, err := os.Stat(filepath.Join(dir, path)); err != nil {
 						t.Fatal(err)
 					}
 				}
-				for _, name := range []string{".env.local", ".env.staging", ".env.prod", ".env.example"} {
-					data, err := os.ReadFile(filepath.Join(dir, "env", name))
-					if err != nil {
-						t.Fatal(err)
-					}
-					for _, key := range []string{"APP_AUTH_JWT_ISSUER=", "APP_AUTH_JWT_AUDIENCE="} {
-						if strings.Count(string(data), key) != 1 {
-							t.Fatalf("%s: missing or duplicate %s", name, key)
-						}
-					}
-					if name != ".env.example" && bytes.Contains(data, []byte("APP_AUTH_JWT_SECRET=")) {
-						t.Fatal("secret added to tracked defaults")
+				authFiles := map[string]bool{}
+				for path := range projectSnapshot(t, dir) {
+					if strings.HasPrefix(path, "internal/auth/") || strings.Contains(path, "auth_module.go") {
+						authFiles[path] = true
 					}
 				}
-				if !atCreation {
-					local, _ := os.ReadFile(filepath.Join(dir, "env/.env.local"))
-					private, _ := os.ReadFile(filepath.Join(dir, "env/.env.local.local"))
-					if !bytes.Contains(local, []byte("APP_AUTH_JWT_ISSUER=custom-issuer")) || string(private) != "APP_AUTH_JWT_SECRET=application-private-secret-with-32-bytes\n" {
-						t.Fatal("auth settings changed")
-					}
+				if len(authFiles) != 3 {
+					t.Fatalf("unexpected auth files: %v", authFiles)
 				}
+
 				before := projectSnapshot(t, dir)
 				if _, added, err := AddModule(dir, "auth"); err != nil || added {
 					t.Fatalf("repeat: %v %v", added, err)
@@ -154,8 +137,8 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if !bytes.Contains(modData, []byte("github.com/golang-jwt/jwt/v5 v5.3.1")) {
-					t.Fatal("JWT dependency missing")
+				if bytes.Contains(modData, []byte("github.com/golang-jwt/jwt")) {
+					t.Fatal("auth added a JWT dependency")
 				}
 				env := "local"
 				command := func(args ...string) string {
@@ -184,15 +167,10 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 						t.Fatalf("inspect: %v", err)
 					}
 					order := strings.Join(report.Initializers[0].ConstructionOrder, "\n")
-					if !strings.Contains(order, "security/http.NewMiddleware[") || strings.Contains(order, "internal/auth.NewMiddleware") {
-						t.Fatalf("framework middleware missing in %s: %s", env, order)
+					if strings.Contains(order, "security/http.NewMiddleware") || strings.Contains(order, "internal/auth.") {
+						t.Fatalf("base setup must not construct an authentication implementation: %s", order)
 					}
-					if !strings.Contains(order, "internal/auth.NewJWTAuthenticator") || !strings.Contains(order, "internal/auth.NewPrincipalResolver") {
-						t.Fatalf("JWT flow missing in %s: %s", env, order)
-					}
-					if strings.Contains(order, "internal/auth/infrastructure/memory") || strings.Contains(order, "internal/auth/infrastructure/postgres") {
-						t.Fatalf("auth must not use repositories: %s", order)
-					}
+
 					command("test", "-race", "./...")
 					command("build", "./cmd/api")
 				}
@@ -202,7 +180,7 @@ func TestAuthModuleNewAndAddGenerateCompileAndRun(t *testing.T) {
 }
 
 func TestAddAuthConflictsDoNotChangeProject(t *testing.T) {
-	for _, kind := range []string{"existing file", "symlink directory", "unsupported mapper", "unsupported router", "auth field exists", "lock"} {
+	for _, kind := range []string{"existing file", "symlink directory", "unsupported bootstrap", "auth module exists", "lock"} {
 		t.Run(kind, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "app")
 			if _, err := Create(Options{Template: "api", Directory: dir, Module: "example.test/app", FrameworkVersion: "v0.1.0"}); err != nil {
@@ -220,27 +198,21 @@ func TestAddAuthConflictsDoNotChangeProject(t *testing.T) {
 				if err := os.Symlink(t.TempDir(), filepath.Join(dir, "internal/auth")); err != nil {
 					t.Fatal(err)
 				}
-			case "unsupported mapper":
-				if err := os.WriteFile(filepath.Join(dir, "internal/item/infrastructure/http/error_mapper.go"), []byte("package itemhttp\n"), 0644); err != nil {
+			case "unsupported bootstrap":
+				if err := os.WriteFile(filepath.Join(dir, "internal/bootstrap/compose.go"), []byte("package bootstrap\n"), 0644); err != nil {
 					t.Fatal(err)
 				}
-			case "unsupported router":
-				path := filepath.Join(dir, "internal/platform/http/server.go")
+			case "auth module exists":
+				path := filepath.Join(dir, "internal/bootstrap/compose.go")
 				data, err := os.ReadFile(path)
 				if err != nil {
 					t.Fatal(err)
 				}
-				data = bytes.ReplaceAll(data, []byte("*http.ServeMux"), []byte("*http.Server"))
+				data = append(data, []byte("\nvar AuthModule = pfw.Module()\n")...)
 				if err := os.WriteFile(path, data, 0644); err != nil {
 					t.Fatal(err)
 				}
-			case "auth field exists":
-				path := filepath.Join(dir, "internal/config/config.go")
-				data, _ := os.ReadFile(path)
-				data = bytes.Replace(data, []byte("type Config struct {"), []byte("type Config struct {\nAuth string"), 1)
-				if err := os.WriteFile(path, data, 0644); err != nil {
-					t.Fatal(err)
-				}
+
 			case "lock":
 				if err := os.WriteFile(filepath.Join(dir, ".pfw-add.lock"), []byte("reserved"), 0600); err != nil {
 					t.Fatal(err)
@@ -295,7 +267,7 @@ func TestAuthRejectsNonAPIAndUnknownModules(t *testing.T) {
 	}
 }
 
-func TestAddAuthJWTDependencyVersions(t *testing.T) {
+func TestAddAuthPreservesExistingDependencies(t *testing.T) {
 	for _, version := range []string{"v5.0.0", "v5.3.1", "v5.4.0"} {
 		t.Run(version, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "app")
@@ -324,30 +296,14 @@ func TestAddAuthJWTDependencyVersions(t *testing.T) {
 			if _, _, err := AddModule(dir, "auth"); err != nil {
 				t.Fatal(err)
 			}
-			data, err = os.ReadFile(path)
+			installed, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
-			module, err = modfile.Parse("go.mod", data, nil)
-			if err != nil {
-				t.Fatal(err)
+			if !bytes.Equal(data, installed) {
+				t.Fatal("auth changed existing dependencies")
 			}
-			want := version
-			if version == "v5.0.0" {
-				want = "v5.3.1"
-			}
-			found := false
-			for _, requirement := range module.Require {
-				if requirement.Mod.Path == "github.com/golang-jwt/jwt/v5" {
-					found = true
-					if requirement.Mod.Version != want {
-						t.Fatalf("version: %s, want %s", requirement.Mod.Version, want)
-					}
-				}
-			}
-			if !found {
-				t.Fatal("JWT dependency removed")
-			}
+
 		})
 	}
 }

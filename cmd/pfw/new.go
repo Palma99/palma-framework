@@ -21,7 +21,7 @@ var newCommand = command{
 		"pfw new -template hello-world -module example.com/hello ./hello",
 		"go run ./cmd/pfw new -template api -module example.com/api -framework-dir . /tmp/palma-api",
 	},
-	notes: []string{"Run from your workspace. The destination must not exist; new creates go.mod and the project files for you.", "-module is required and sets the Go module path used by imports. The directory is where files are written; it can have a different name.", "Templates: hello-world, api. API routers: stdlib (default), echo. -auth includes bearer JWT authentication; pfw add auth installs it later.", "A release CLI pins its own version. A development CLI requires -framework-dir or -framework-version."},
+	notes: []string{"Run from your workspace. The destination must not exist; new creates go.mod and the project files for you.", "-module is required and sets the Go module path used by imports. The directory is where files are written; it can have a different name.", "Templates: hello-world, api. API routers: stdlib (default), echo. -auth includes a minimal security setup; pfw add auth installs it later.", "A release CLI pins its own version. A development CLI requires -framework-dir or -framework-version."},
 	run:   runNew,
 }
 
@@ -91,7 +91,7 @@ func runNew(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	}
 	fmt.Fprintf(stdout, "Created %s project in %s\n\nFrom the project directory:\n  go mod tidy\n  go tool pfw run -env %s %s\n", *name, dir, *env, entry)
 	if *auth {
-		fmt.Fprintln(stdout, "\nAuth module included. See internal/auth/README.md for JWT configuration and endpoints.")
+		fmt.Fprintln(stdout, "\nAuth module included. See internal/auth/README.md for application security integration.")
 	}
 	return nil
 }

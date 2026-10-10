@@ -36,7 +36,7 @@ func TestNewAuthAndAddCommand(t *testing.T) {
 		if !strings.Contains(out.String(), "already installed") {
 			t.Fatalf("repeat: %s", out.String())
 		}
-		if _, err := os.Stat(filepath.Join(dir, "internal/auth/jwt.go")); err != nil {
+		if _, err := os.Stat(filepath.Join(dir, "internal/auth/principal.go")); err != nil {
 			t.Fatal(err)
 		}
 		settings, err := readProjectSettings(dir)

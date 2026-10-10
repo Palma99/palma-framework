@@ -173,4 +173,4 @@ con repository in memoria e wiring generato.
 Il modulo può essere incluso nello scaffold API con
 `pfw new -template api -auth -module example.com/myapi ./myapi`, oppure aggiunto
 successivamente con `pfw add auth`. La [guida allo scaffolding](docs/scaffolding.md)
-descrive il setup bearer JWT, la configurazione e il principal costruito dai claim.
+descrive il principal applicativo e il punto di composizione DI da completare.

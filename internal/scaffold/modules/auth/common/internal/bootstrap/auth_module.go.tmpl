@@ -2,14 +2,10 @@
 
 package bootstrap
 
-import (
- pfw "github.com/palma99/palma-framework"
- securityhttp "github.com/palma99/palma-framework/security/http"
- "{{.Module}}/internal/auth"
-)
+import pfw "github.com/palma99/palma-framework"
 
-// AuthModule connects the application's JWT authentication contracts.
-// The bootstrap's discovery registers the annotated constructors.
-var AuthModule = pfw.Module(
- pfw.Constructors(securityhttp.NewMiddleware[auth.BearerCredentials, auth.VerifiedJWT, auth.Principal]),
-)
+// AuthModule is the application's security composition point.
+// Register the framework middleware with your credentials, identity and principal
+// types, then provide the application's extractor, authenticator and resolver.
+// Annotated constructors are discovered by the bootstrap; AutoBind connects them.
+var AuthModule = pfw.Module()

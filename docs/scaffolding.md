@@ -90,47 +90,26 @@ pfw add auth -dir ./myapi
 elenca anche i moduli opzionali. La ricetta usa gli stessi file e lo stesso
 setup nei due percorsi: `pfw new -auth` e `pfw add auth`.
 
-Il modulo genera `internal/auth` con bearer extractor, verifica JWT HS256,
-resolver del principal dai claim, controller e test. Aggiorna `Config.Auth`,
-il mapper, le rotte e il bootstrap DI con `AuthModule`. Aggiunge la dipendenza
-`github.com/golang-jwt/jwt/v5` al `go.mod`, aggiornando versioni precedenti a `v5.3.1` e conservando
-quelle successive già scelte dall'applicazione. L'autenticazione non richiede repository o migration.
+Il modulo genera soltanto `internal/auth/principal.go`, un README e
+`internal/bootstrap/auth_module.go`. Collega `AuthModule` al bootstrap DI.
+L'API base continua a generarsi, compilare e funzionare senza implementare auth.
 
-- `GET /auth/me` richiede un bearer JWT valido e restituisce il principal.
-- `GET /auth/status` consente richieste anonime ma rifiuta credenziali invalide.
-- `sub` viene mappato in `Principal.UserID`; `roles` in `Principal.Roles`.
-- Lo stesso flusso JWT viene usato in tutti gli ambienti.
+Lo sviluppatore definisce credenziali e identità verificata, implementa extractor,
+authenticator e resolver tramite i contratti security, e registra in `AuthModule`
+il costruttore generico del middleware fornito dal framework. La discovery trova
+i costruttori annotati e `AutoBind` ne collega le dipendenze. Le rotte da proteggere
+e le regole di accesso vengono scelte esplicitamente nell'applicazione.
 
-Il JWT generato è un esempio di proprietà dell'applicazione da adattare, mentre
-il framework fornisce i contratti security e il middleware. I file `principal.go`,
-`bearer.go`, `jwt.go` e `resolver.go` separano tipi, estrazione, verifica e
-mapping del principal. `AuthModule` registra direttamente il costruttore generico
-del middleware del framework; `AutoBind` risolve i contratti applicativi.
-I controller dipendono da interfacce sostituibili tramite `Bind` o `Override`,
-senza un wrapper middleware generato nell’applicazione.
-
-La ricetta documenta `APP_AUTH_JWT_SECRET`, `APP_AUTH_JWT_ISSUER` e
-`APP_AUTH_JWT_AUDIENCE` in `env/.env.example` e aggiunge i default non sensibili
-(default: `palma-api`) nei file degli ambienti, preservando i valori esistenti.
-Inserire un segreto casuale di almeno 32 byte in `env/.env.local.local` per lo
-sviluppo; usare segreti separati in `env/.env.staging.local` e `env/.env.prod.local`
-o nella configurazione del deployment. I file privati sono ignorati da Git.
-Non servono `export` nel terminale e non viene generato alcun secret.
-
-La verifica controlla firma, algoritmo HS256, scadenza obbligatoria, issuer,
-audience, subject non vuoto e validità temporale dei claim presenti. Un secret
-mancante o troppo corto interrompe l'avvio con un errore di configurazione.
-
-Il README del modulo include esempi curl con un JWT ottenuto dal flusso di
-autenticazione dell'applicazione. Le rotte applicative si proteggono con il
-middleware scelto e le policy sulle risorse restano nei servizi. Emissione dei
-token, login, refresh, revoca e integrazioni con issuer esterni sono flussi
-applicativi da implementare.
+La ricetta non installa implementazioni JWT, API key o provider esterni, endpoint
+auth, configurazione, segreti, repository, migration o dipendenze aggiuntive.
+I file di configurazione, le rotte, i mapper e i test applicativi esistenti restano
+invariati. Il README spiega come collegare il middleware e aggiungere le regole
+HTTP security al mapper quando si implementa l'autenticazione.
 
 Il comando registra `modules = ["auth"]` in `pfw.toml`: ripeterlo è un no-op e
-non sovrascrive le personalizzazioni del modulo. I nuovi scaffold salvano anche
-`scaffold` e `router`; quelli precedenti possono essere riconosciuti dal codice
-del router. La ricetta modifica strutturalmente i punti d'integrazione previsti
+non sovrascrive le personalizzazioni del modulo. La ricetta usa il bootstrap
+indicato nel manifest, anche nei progetti precedenti. Modifica strutturalmente
+i punti d'integrazione previsti
 dallo scaffold API, conservando il codice circostante. File in conflitto, alias
 occupati, symlink e punti d'integrazione non riconosciuti causano un errore prima
 della scrittura. Un lock locale impedisce due installazioni contemporanee; errori
