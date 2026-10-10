@@ -1,0 +1,8 @@
+ARG GO_VERSION=1.26
+FROM golang:${GO_VERSION}-bookworm
+
+ARG AIR_VERSION=v1.67.4
+RUN go install github.com/air-verse/air@${AIR_VERSION}
+
+WORKDIR /workspace
+CMD ["sh", "docker/entrypoint.sh"]

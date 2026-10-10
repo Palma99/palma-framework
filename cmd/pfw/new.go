@@ -16,12 +16,13 @@ var newCommand = command{
 	usage:       newUsage,
 	description: "Create a Go project from a bundled template",
 	examples: []string{
+		"pfw new -template api -docker -env staging -module example.com/myapi ./myapi",
 		"pfw new -template api -auth -module example.com/myapi ./myapi",
 		"pfw new -template api -router echo -module example.com/myapi ./myapi",
 		"pfw new -template hello-world -module example.com/hello ./hello",
 		"go run ./cmd/pfw new -template api -module example.com/api -framework-dir . /tmp/palma-api",
 	},
-	notes: []string{"Run from your workspace. The destination must not exist; new creates go.mod and the project files for you.", "-module is required and sets the Go module path used by imports. The directory is where files are written; it can have a different name.", "Templates: hello-world, api. API routers: stdlib (default), echo. -auth includes a minimal security setup; pfw add auth installs it later.", "A release CLI pins its own version. A development CLI requires -framework-dir or -framework-version."},
+	notes: []string{"Run from your workspace. The destination must not exist; new creates go.mod and the project files for you.", "-module is required and sets the Go module path used by imports. The directory is where files are written; it can have a different name.", "Templates: hello-world, api. API routers: stdlib (default), echo. -auth includes a minimal security setup; pfw add auth installs it later.", "-docker adds Docker Compose and Air for development; API projects also include PostgreSQL. The app environment remains selectable, including staging.", "A release CLI pins its own version. A development CLI requires -framework-dir or -framework-version."},
 	run:   runNew,
 }
 
@@ -57,6 +58,7 @@ func runNew(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 	env := flags.String("env", "", "initial environment `name` (api: local; hello-world: dev)")
 	router := flags.String("router", "", "API router `name` (default: stdlib; see pfw templates)")
 	auth := flags.Bool("auth", false, "include the optional authentication module (api only)")
+	docker := flags.Bool("docker", false, "include Docker Compose development with Air hot reload")
 	version := flags.String("framework-version", "", "published framework `version`")
 	local := flags.String("framework-dir", "", "local framework checkout `path` for development")
 	if err := parseCommandFlags("new", flags, args, stdout); err != nil {
@@ -79,7 +81,7 @@ func runNew(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 			*version = release
 		}
 	}
-	dir, err := scaffold.Create(scaffold.Options{Template: *name, Router: *router, Auth: *auth, Module: *module, Environment: *env, Directory: flags.Arg(0), FrameworkVersion: *version, FrameworkDir: *local})
+	dir, err := scaffold.Create(scaffold.Options{Template: *name, Router: *router, Auth: *auth, Docker: *docker, Module: *module, Environment: *env, Directory: flags.Arg(0), FrameworkVersion: *version, FrameworkDir: *local})
 	if err != nil {
 		return err
 	}
@@ -89,7 +91,12 @@ func runNew(ctx context.Context, args []string, stdout, stderr io.Writer) error 
 			entry = t.Entry
 		}
 	}
-	fmt.Fprintf(stdout, "Created %s project in %s\n\nFrom the project directory:\n  go mod tidy\n  go tool pfw run -env %s %s\n", *name, dir, *env, entry)
+	fmt.Fprintf(stdout, "Created %s project in %s\n\nFrom the project directory:\n", *name, dir)
+	if *docker {
+		fmt.Fprintln(stdout, "  docker compose up --build\n\nSee docker/README.md to select the app environment and configure development services.")
+	} else {
+		fmt.Fprintf(stdout, "  go mod tidy\n  go tool pfw run -env %s %s\n", *env, entry)
+	}
 	if *auth {
 		fmt.Fprintln(stdout, "\nAuth module included. See internal/auth/README.md for application security integration.")
 	}

@@ -55,3 +55,19 @@ func TestNewCommandEchoRouter(t *testing.T) {
 		t.Fatalf("default API environment: %s", out.String())
 	}
 }
+
+func TestNewCommandDockerDevelopment(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "docker-api")
+	var out bytes.Buffer
+	if err := run([]string{"new", "-template", "api", "-docker", "-auth", "-env", "staging", "-module", "example.com/dockerapi", "-framework-version", "v0.1.0", dir}, &out, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"Dockerfile.dev", "compose.yaml", ".air.toml", "docker/build.sh", "docker/README.md", "internal/auth/principal.go"} {
+		if _, err := os.Stat(filepath.Join(dir, path)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !strings.Contains(out.String(), "docker compose up --build") {
+		t.Fatalf("missing Docker next steps: %s", out.String())
+	}
+}

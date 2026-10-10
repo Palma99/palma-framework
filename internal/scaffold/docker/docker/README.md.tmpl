@@ -1,0 +1,67 @@
+# Container development
+
+Requires Docker with Compose v2. Start from the project root:
+
+```sh
+docker compose up --build
+```
+
+The app uses Go 1.26 and Air v1.67.4. Source files are mounted into the container;
+Air polls for changes, regenerates DI wiring and rebuilds the app. Generated
+`pfw_gen.go` files and build outputs are excluded to prevent reload loops.
+Go dependencies, build cache and binaries have separate persistent volumes.
+
+## Select the application environment
+
+The initial environment is `{{.Environment}}`. Container development does not
+force a particular application environment. To change it, copy the root
+`.env.example` to `.env`, edit `PFW_ENV`, then recreate the service:
+
+```sh
+cp .env.example .env
+# Edit PFW_ENV in .env.
+docker compose up --build
+```
+
+The root `.env` configures Compose. Application configuration files remain in
+`env/` for the API. Compose passes the selected environment into both generation
+and runtime, so staging-specific DI bindings work during container development.
+{{if eq .Template "api"}}
+## Development database and API
+
+PostgreSQL is available as `db:5432` inside Compose and `localhost:5432` on the
+host. The development database/user/password are `palma`. HTTP defaults to
+`http://localhost:8080`; `DEV_HTTP_PORT` and `DEV_DB_PORT` change host ports.
+
+- `local` keeps the API's in-memory storage; PostgreSQL is available but unused.
+- `staging` and `prod` use the Compose PostgreSQL database. Pending migrations
+  are applied before each app build/start, including SQL changes.
+
+Compose overrides the listen address and SQL connection settings so environment
+files do not bind HTTP to container localhost or connect to external databases.
+The API waits for PostgreSQL's healthcheck. These credentials and services are
+for development, regardless of the selected application environment.
+
+```sh
+curl http://localhost:8080/health
+docker compose exec app go tool pfw migrate status
+```
+
+Database data persists in a named volume. `docker compose down` preserves it;
+`docker compose down -v` removes the development data and all cache volumes.
+{{end}}
+## Useful commands
+
+```sh
+docker compose logs -f app
+docker compose exec app go test ./...
+docker compose down
+```
+
+If created with `-framework-dir`, Compose also mounts that checkout read-only at
+its original absolute path so the generated Go `replace` works in the container.
+Share that directory with Docker Desktop if needed. Air watches application
+files; restart the app after changing the external framework checkout.
+
+Air is installed only in the development image; it is not an application
+module dependency. Rebuild the image after changing Dockerfile tool versions.

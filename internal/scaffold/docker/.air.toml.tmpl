@@ -1,0 +1,24 @@
+root = "."
+tmp_dir = "tmp"
+env_files = []
+
+[build]
+cmd = "sh docker/build.sh"
+bin = "./tmp/app"
+entrypoint = ["./tmp/app"]
+include_ext = ["go", "toml", "sql", "mod", "sh", "env", "local", "staging", "prod"]
+exclude_dir = [".git", "tmp", "bin", "vendor"]
+exclude_regex = ["pfw_gen\\.go$", "_test\\.go$"]
+exclude_unchanged = true
+poll = true
+poll_interval = 1000
+delay = 500
+stop_on_error = true
+send_interrupt = true
+kill_delay = "10s"
+
+[log]
+time = true
+
+[misc]
+clean_on_exit = false

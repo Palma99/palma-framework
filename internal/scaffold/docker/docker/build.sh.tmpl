@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+: "${PFW_ENV:={{.Environment}}}"
+export PFW_ENV
+
+go mod tidy
+go tool pfw generate -env "$PFW_ENV"
+{{if eq .Template "api"}}
+# These migrations target the development database configured by Compose.
+case "$PFW_ENV" in
+  staging|prod) go tool pfw migrate up -env "$PFW_ENV" ;;
+esac
+{{end}}
+mkdir -p tmp
+go build -o ./tmp/app ./cmd/{{if eq .Template "api"}}api{{else}}app{{end}}

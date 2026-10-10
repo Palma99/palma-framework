@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+: "${PFW_ENV:={{.Environment}}}"
+export PFW_ENV
+
+go mod tidy
+exec air -c .air.toml

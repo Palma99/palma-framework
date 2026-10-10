@@ -157,6 +157,15 @@ condiviso. L’integrazione `transaction/sql` permette a più repository di usar
 la stessa transazione SQL, con commit, rollback e annidamento controllati.
 Vedi la [guida alle transazioni](docs/transactions.md).
 
+Lo scaffolding supporta anche `-docker` per lo sviluppo con Air e Docker Compose:
+
+```sh
+pfw new -template api -docker -env staging -module example.com/myapi ./myapi
+```
+
+L'API include PostgreSQL di sviluppo; l'ambiente applicativo resta selezionabile.
+Vedi la [guida Docker dello scaffolding](docs/scaffolding.md#sviluppo-con-docker).
+
 ## Autenticazione e autorizzazione
 
 Il [modulo security](docs/security.md) definisce contratti generici per

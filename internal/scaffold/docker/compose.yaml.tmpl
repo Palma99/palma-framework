@@ -1,0 +1,53 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    init: true
+    working_dir: /workspace
+    environment:
+      PFW_ENV: "${PFW_ENV:-{{.Environment}}}"
+      GOWORK: "off"
+{{if eq .Template "api"}}      PFW_ENV_DIR: /workspace/env
+      APP_HTTP_ADDRESS: ":8080"
+      APP_DB_DRIVER: pgx
+      APP_DB_DSN: "postgres://palma:palma@db:5432/palma?sslmode=disable"
+      APP_DB_REPLICA_DSN: ""
+    ports:
+      - "127.0.0.1:${DEV_HTTP_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+{{end}}    volumes:
+      - .:/workspace
+      - go-modules:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+      - app-tmp:/workspace/tmp
+{{if .FrameworkDir}}      - type: bind
+        source: {{printf "%q" .FrameworkDir}}
+        target: {{printf "%q" .FrameworkDir}}
+        read_only: true
+{{end}}    stop_grace_period: 15s
+{{if eq .Template "api"}}
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: palma
+      POSTGRES_PASSWORD: palma
+      POSTGRES_DB: palma
+    ports:
+      - "127.0.0.1:${DEV_DB_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U palma -d palma"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+{{end}}
+volumes:
+  go-modules:
+  go-build:
+  app-tmp:
+{{if eq .Template "api"}}  postgres-data:
+{{end}}

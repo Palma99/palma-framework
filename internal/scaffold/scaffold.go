@@ -19,7 +19,7 @@ import (
 
 const FrameworkModule = "github.com/palma99/palma-framework"
 
-//go:embed all:templates all:routers all:modules
+//go:embed all:templates all:routers all:modules all:docker
 var bundled embed.FS
 
 type Template struct{ Name, Description, Entry string }
@@ -36,6 +36,7 @@ type Options struct {
 	FrameworkVersion, FrameworkDir           string
 	Router                                   string
 	Auth                                     bool
+	Docker                                   bool
 }
 
 type Dependency struct{ Module, Version string }
@@ -116,6 +117,13 @@ func Create(options Options) (string, error) {
 	if _, err := os.Lstat(dir); !os.IsNotExist(err) {
 		return "", fmt.Errorf("destination must not exist: %s", dir)
 	}
+	if options.FrameworkDir != "" {
+		absolute, err := filepath.Abs(options.FrameworkDir)
+		if err != nil {
+			return "", err
+		}
+		options.FrameworkDir = absolute
+	}
 	goMod, err := moduleFile(options)
 	if err != nil {
 		return "", err
@@ -124,6 +132,9 @@ func Create(options Options) (string, error) {
 	roots := []string{"templates/" + options.Template}
 	if options.Template == "api" {
 		roots = append(roots, "routers/"+options.Router)
+	}
+	if options.Docker {
+		roots = append(roots, "docker")
 	}
 	for _, root := range roots {
 		err = fs.WalkDir(bundled, root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -162,6 +173,10 @@ func Create(options Options) (string, error) {
 		if err != nil {
 			return "", err
 		}
+	}
+	if options.Docker {
+		files[".gitignore"] = append(files[".gitignore"], []byte("\n/.env\n/tmp/\n")...)
+		files["README.md"] = append(files["README.md"], []byte("\n## Docker development\n\nRun `docker compose up --build`. See [docker/README.md](docker/README.md) for Air, environment selection and development services.\n")...)
 	}
 	// Reserve the destination exclusively after every template has rendered.
 	if err := os.Mkdir(dir, 0755); err != nil {

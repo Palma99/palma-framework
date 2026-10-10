@@ -71,6 +71,36 @@ di controller e server nella nuova directory. Dominio, application, configurazio
 storage e test del contratto HTTP rimangono condivisi. Gin e Chi non sono
 ancora disponibili.
 
+## Sviluppo con Docker
+
+Il flag opzionale `-docker` aggiunge `Dockerfile.dev`, `compose.yaml`, `.air.toml`,
+script di sviluppo e una guida in `docker/README.md`. È disponibile per entrambi
+i template; l'API include anche PostgreSQL con healthcheck e volume persistente.
+
+```sh
+pfw new -template api -docker -env staging -module example.com/myapi ./myapi
+cd myapi
+docker compose up --build
+```
+
+Air rigenera il wiring DI e ricompila a ogni modifica, escludendo `pfw_gen.go`
+e gli output di build per evitare cicli di reload. Dipendenze Go e cache di build
+restano in volumi dedicati. Prima delle build API in `staging` o `prod` vengono
+applicate le migration al database di sviluppo.
+
+Docker è il modo di esecuzione, indipendente dall'ambiente dell'applicazione:
+`local` usa memoria, mentre `staging` e `prod` usano PostgreSQL di Compose.
+L'ambiente iniziale segue `-env`. Per cambiarlo senza variabili nel terminale,
+copiare il `.env.example` nella root in `.env`, modificare `PFW_ENV` e rilanciare
+`docker compose up --build`. Quel file configura Compose; i file applicativi
+restano sotto `env/`. Le porte host si configurano con `DEV_HTTP_PORT` e
+`DEV_DB_PORT`. Il servizio API riceve indirizzo HTTP e DSN interni alla rete
+Compose, con credenziali locali di sviluppo, anche quando l'ambiente è `staging`.
+
+Con `-framework-dir` viene montato anche il checkout locale, in sola lettura al
+percorso assoluto usato dal `replace`. Non vengono avviati container né installati
+tool durante lo scaffolding. Senza `-docker` non vengono generati file Docker.
+
 ## Moduli aggiuntivi: auth
 
 Il modulo `auth` può essere incluso nella creazione oppure aggiunto a uno
